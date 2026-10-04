@@ -12,7 +12,7 @@ import { DEFAULT_LOGIN_RATE_LIMIT, loginRateLimit } from './middlewares/login-ra
 import type { LoginRateLimitOptions } from './middlewares/login-rate-limit.js';
 import { requireAuth } from './middlewares/require-auth.js';
 import { createProtectedAuthRouter, createPublicAuthRouter } from './routes/auth.js';
-import { healthRouter } from './routes/health.js';
+import { createHealthRouter } from './routes/health.js';
 import { createAuthService } from './services/auth.service.js';
 import type { Clock } from './utils/time.js';
 
@@ -37,7 +37,7 @@ export function createApp(deps: AppDeps): Express {
   app.use(cors({ origin: origins, credentials: true }));
   app.use(express.json({ limit: '100kb' }));
 
-  app.use(healthRouter);
+  app.use(createHealthRouter(pool));
 
   const authService = createAuthService({
     pool,
