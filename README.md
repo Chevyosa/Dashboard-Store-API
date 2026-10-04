@@ -26,10 +26,18 @@ Husky memasang hook `pre-push` otomatis saat `npm ci` (typecheck + test).
 | `npm test`              | Vitest (unit + integration)                  |
 | `npm run test:watch`    | Vitest mode watch                            |
 | `npm run test:coverage` | Test dengan coverage `src/domain`            |
-| `npm run migrate`       | Runner migrasi (diimplementasi di T-02)      |
+| `npm run migrate`       | Terapkan migrasi ke `DB_NAME` (idempoten)    |
 | `npm audit --omit=dev`  | Audit dependency produksi                    |
 
 ## Catatan
 
 - TypeScript dipatok `~6.0.3` karena `typescript-eslint` belum mendukung TypeScript 7.
-- Test integrasi DB hanya boleh jalan di database berakhiran `_test` (guard dibuat di T-02).
+- Test integrasi memakai MySQL: database `store_test` (atau `TEST_DB_NAME`) harus sudah dibuat. Host, user, dan password dibaca dari `.env`; nama database test **wajib berakhiran `_test`**, kalau tidak test menolak jalan.
+- Migrasi dimigrasikan otomatis ke database test sekali sebelum integration test. Test runner migrasi membuat dan menghapus database sementara `store_migrator_test` (butuh hak `CREATE`/`DROP`).
+
+## Migrasi
+
+- File: `migrations/NNNN_deskripsi.sql` (huruf kecil), **forward-only**. Jangan mengedit migrasi yang sudah diterapkan; buat file baru.
+- Dicatat di tabel `schema_migrations` beserta checksum SHA-256. Checksum berubah, file hilang, atau nomor di luar urutan = gagal tegas (exit code 2).
+- MySQL tidak punya DDL transaksional: migrasi dicatat hanya setelah seluruh file sukses. Jaga satu file tetap kecil agar mudah dipulihkan bila gagal di tengah.
+- Kolom waktu memakai `UTC_TIMESTAMP(3)`, bukan `CURRENT_TIMESTAMP` (time zone MySQL lokal bisa bukan UTC).

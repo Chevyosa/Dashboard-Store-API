@@ -21,3 +21,27 @@ export function createDbPool(env: DbEnv): mysql.Pool {
     charset: 'utf8mb4',
   });
 }
+
+// Runs fn inside one transaction: commit on success, rollback on any error,
+// and the connection always goes back to the pool (AGENTS.md §7).
+export async function withTransaction<T>(
+  pool: mysql.Pool,
+  fn: (conn: mysql.PoolConnection) => Promise<T>,
+): Promise<T> {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const result = await fn(conn);
+    await conn.commit();
+    return result;
+  } catch (err) {
+    try {
+      await conn.rollback();
+    } catch {
+      // Keep the original error; a failed rollback must not mask it.
+    }
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
