@@ -12,11 +12,14 @@ import type { LoginRateLimitOptions } from './middlewares/login-rate-limit.js';
 import { requireAuth } from './middlewares/require-auth.js';
 import { createProtectedAuthRouter, createPublicAuthRouter } from './routes/auth.js';
 import { createConsignorRouter } from './routes/consignor.js';
+import { createProductRouter } from './routes/product.js';
 import { createHealthRouter } from './routes/health.js';
 import { createAuthController } from './controllers/auth.controller.js';
 import { createConsignorController } from './controllers/consignor.controller.js';
+import { createProductController } from './controllers/product.controller.js';
 import { createAuthService } from './services/auth.service.js';
 import { createConsignorService } from './services/consignor.service.js';
+import { createProductService } from './services/product.service.js';
 import type { Clock } from './utils/time.js';
 
 export interface AppDeps {
@@ -59,6 +62,12 @@ export function createApp(deps: AppDeps): Express {
   });
   const consignorController = createConsignorController(consignorService);
 
+  const productService = createProductService({
+    pool,
+    ...(deps.clock === undefined ? {} : { clock: deps.clock }),
+  });
+  const productController = createProductController(productService);
+
   // Everything under /api/v1 needs a session except login/logout (AGENTS.md §8).
   // requireAuth sits before the 404 handler so unknown routes do not leak without a session.
   const api = express.Router();
@@ -67,6 +76,7 @@ export function createApp(deps: AppDeps): Express {
   api.use(requireAuth(authService));
   api.use('/auth', createProtectedAuthRouter(authController));
   api.use(createConsignorRouter(consignorController));
+  api.use(createProductRouter(productController));
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);
