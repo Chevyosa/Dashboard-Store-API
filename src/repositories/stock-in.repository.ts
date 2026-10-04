@@ -280,7 +280,47 @@ export class StockInRepository {
 
     const [rows] = await db.execute<StockInHeaderRow[]>(selectSql, params);
 
-    const data = rows.map((r) => mapHeaderRowToEntity(r));
+    if (rows.length === 0) {
+      return { data: [], total };
+    }
+
+    const ids = rows.map((r) => r.id);
+    const placeholders = ids.map(() => '?').join(', ');
+    const [lineRows] = await db.execute<StockInLineRow[]>(
+      `SELECT
+         sil.id,
+         sil.stock_in_id,
+         sil.product_id,
+         p.name AS product_name,
+         p.owner_type,
+         c.name AS consignor_name,
+         sil.input_mode,
+         sil.qty_pack,
+         sil.pcs_per_pack_snapshot,
+         sil.qty_pcs,
+         sil.total_cost,
+         DATE_FORMAT(sil.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+         DATE_FORMAT(sil.updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at
+       FROM stock_in_lines sil
+       JOIN products p ON p.id = sil.product_id
+       LEFT JOIN consignors c ON c.id = p.consignor_id
+       WHERE sil.stock_in_id IN (${placeholders})
+       ORDER BY sil.id ASC`,
+      ids,
+    );
+
+    const linesByStockInId = new Map<number, StockInLineEntity[]>();
+    for (const lineRow of lineRows) {
+      const lineEntity = mapLineRowToEntity(lineRow);
+      const existing = linesByStockInId.get(lineEntity.stockInId);
+      if (existing) {
+        existing.push(lineEntity);
+      } else {
+        linesByStockInId.set(lineEntity.stockInId, [lineEntity]);
+      }
+    }
+
+    const data = rows.map((r) => mapHeaderRowToEntity(r, linesByStockInId.get(r.id) ?? []));
     return { data, total };
   }
 

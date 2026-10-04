@@ -278,6 +278,76 @@ describe('Stock In API (/api/v1/stock-ins)', () => {
     });
   });
 
+  describe('GET /api/v1/stock-ins', () => {
+    it('returns stock in list with fully populated line items', async () => {
+      const ownId = await createTestProduct({
+        name: 'Gery Salut',
+        ownerType: 'own',
+        pcsPerPack: 10,
+        sellPrice: '1500.0000',
+      });
+      const saniId = await createTestConsignor('Pak Sani');
+      const lemperId = await createTestProduct({
+        name: 'Lemper Ayam',
+        ownerType: 'consignor',
+        consignorId: saniId,
+        sellPrice: '7000.0000',
+        marginType: 'nominal',
+        marginValue: '1000.0000',
+      });
+
+      // Stock In 1: Multi-lines (2 items)
+      await authedPost('/api/v1/stock-ins', {
+        type: 'initial',
+        date: '2026-10-01',
+        note: 'Stok awal',
+        lines: [
+          { productId: ownId, inputMode: 'pack', qtyPack: 1, totalCost: '10000.0000' },
+          { productId: lemperId, inputMode: 'pcs', qtyPcs: 10, totalCost: '0.0000' },
+        ],
+      });
+
+      // Stock In 2: Single line (1 item)
+      await authedPost('/api/v1/stock-ins', {
+        type: 'purchase',
+        date: '2026-10-02',
+        note: 'Belanja tambahan',
+        lines: [
+          { productId: ownId, inputMode: 'pcs', qtyPcs: 5, totalCost: '5000.0000' },
+        ],
+      });
+
+      const res = await authedGet('/api/v1/stock-ins');
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.length).toBe(2);
+
+      // Verify the multi-line stock-in has both lines populated
+      const multiLineItem = res.body.data.find(
+        (item: { note: string }) => item.note === 'Stok awal',
+      );
+      expect(multiLineItem).toBeDefined();
+      expect(multiLineItem.linesCount).toBe(2);
+      expect(multiLineItem.lines).toBeDefined();
+      expect(multiLineItem.lines.length).toBe(2);
+      expect(multiLineItem.lines[0].productName).toBe('Gery Salut');
+      expect(multiLineItem.lines[0].qtyPcs).toBe(10);
+      expect(multiLineItem.lines[1].productName).toBe('Lemper Ayam');
+      expect(multiLineItem.lines[1].qtyPcs).toBe(10);
+
+      // Verify the single-line stock-in has 1 line populated
+      const singleLineItem = res.body.data.find(
+        (item: { note: string }) => item.note === 'Belanja tambahan',
+      );
+      expect(singleLineItem).toBeDefined();
+      expect(singleLineItem.linesCount).toBe(1);
+      expect(singleLineItem.lines).toBeDefined();
+      expect(singleLineItem.lines.length).toBe(1);
+      expect(singleLineItem.lines[0].productName).toBe('Gery Salut');
+      expect(singleLineItem.lines[0].qtyPcs).toBe(5);
+    });
+  });
+
   describe('GET /api/v1/stock-ins/summary/open-period', () => {
     it('summarizes purchase costs and incoming pcs for open period', async () => {
       const ownId = await createTestProduct({
