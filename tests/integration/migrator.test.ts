@@ -86,6 +86,7 @@ describe('runMigrations', () => {
       '0004_audit_log_auth_lookup.sql',
       '0005_consignors.sql',
       '0006_products.sql',
+      '0007_stock_ins_and_returns.sql',
     ]);
     const tables = await query(
       `SELECT table_name AS name FROM information_schema.tables WHERE table_schema = '${SCRATCH}'`,
@@ -96,6 +97,9 @@ describe('runMigrations', () => {
       'products',
       'schema_migrations',
       'sessions',
+      'stock_in_lines',
+      'stock_ins',
+      'stock_returns',
       'users',
     ]);
   });
