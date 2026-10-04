@@ -84,12 +84,14 @@ describe('runMigrations', () => {
       '0002_sessions.sql',
       '0003_audit_log.sql',
       '0004_audit_log_auth_lookup.sql',
+      '0005_consignors.sql',
     ]);
     const tables = await query(
       `SELECT table_name AS name FROM information_schema.tables WHERE table_schema = '${SCRATCH}'`,
     );
     expect(tables.map((t) => t.name).sort()).toEqual([
       'audit_log',
+      'consignors',
       'schema_migrations',
       'sessions',
       'users',

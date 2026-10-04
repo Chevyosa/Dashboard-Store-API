@@ -5,15 +5,18 @@ import helmet from 'helmet';
 import type { Pool } from 'mysql2/promise';
 import { corsOrigins } from './config/env.js';
 import type { Env } from './config/env.js';
-import { createAuthController } from './controllers/auth.controller.js';
 import { csrfProtection } from './middlewares/csrf.js';
 import { errorHandler, notFoundHandler } from './middlewares/error-handler.js';
 import { DEFAULT_LOGIN_RATE_LIMIT, loginRateLimit } from './middlewares/login-rate-limit.js';
 import type { LoginRateLimitOptions } from './middlewares/login-rate-limit.js';
 import { requireAuth } from './middlewares/require-auth.js';
 import { createProtectedAuthRouter, createPublicAuthRouter } from './routes/auth.js';
+import { createConsignorRouter } from './routes/consignor.js';
 import { createHealthRouter } from './routes/health.js';
+import { createAuthController } from './controllers/auth.controller.js';
+import { createConsignorController } from './controllers/consignor.controller.js';
 import { createAuthService } from './services/auth.service.js';
+import { createConsignorService } from './services/consignor.service.js';
 import type { Clock } from './utils/time.js';
 
 export interface AppDeps {
@@ -50,6 +53,12 @@ export function createApp(deps: AppDeps): Express {
   });
   const limiter = loginRateLimit(deps.loginRateLimit ?? DEFAULT_LOGIN_RATE_LIMIT);
 
+  const consignorService = createConsignorService({
+    pool,
+    ...(deps.clock === undefined ? {} : { clock: deps.clock }),
+  });
+  const consignorController = createConsignorController(consignorService);
+
   // Everything under /api/v1 needs a session except login/logout (AGENTS.md §8).
   // requireAuth sits before the 404 handler so unknown routes do not leak without a session.
   const api = express.Router();
@@ -57,6 +66,7 @@ export function createApp(deps: AppDeps): Express {
   api.use('/auth', createPublicAuthRouter(authController, limiter));
   api.use(requireAuth(authService));
   api.use('/auth', createProtectedAuthRouter(authController));
+  api.use(createConsignorRouter(consignorController));
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);
