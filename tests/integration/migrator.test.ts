@@ -79,7 +79,12 @@ const write = (name: string, sql: string): Promise<void> => writeFile(path.join(
 describe('runMigrations', () => {
   it('applies the real migrations onto an empty database', async () => {
     const result = await runMigrations(config, REAL_DIR);
-    expect(result.applied).toEqual(['0001_users.sql', '0002_sessions.sql', '0003_audit_log.sql']);
+    expect(result.applied).toEqual([
+      '0001_users.sql',
+      '0002_sessions.sql',
+      '0003_audit_log.sql',
+      '0004_audit_log_auth_lookup.sql',
+    ]);
     const tables = await query(
       `SELECT table_name AS name FROM information_schema.tables WHERE table_schema = '${SCRATCH}'`,
     );

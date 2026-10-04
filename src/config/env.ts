@@ -15,6 +15,8 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => (v === undefined || v === '' ? undefined : v)),
+  // Number of reverse-proxy hops to trust for req.ip (0 = none; 1 behind Nginx).
+  TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 
@@ -35,4 +37,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     throw new EnvError(issues);
   }
   return result.data;
+}
+
+export function corsOrigins(env: Pick<Env, 'CORS_ORIGIN'>): string[] {
+  return env.CORS_ORIGIN.split(',')
+    .map((o) => o.trim())
+    .filter((o) => o.length > 0);
 }

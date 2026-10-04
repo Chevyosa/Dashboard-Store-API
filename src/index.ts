@@ -5,7 +5,7 @@ import { createDbPool } from './config/db.js';
 
 const env = loadEnv();
 const pool = createDbPool(env);
-const app = createApp();
+const app = createApp({ pool, env });
 
 const server = app.listen(env.PORT, () => {
   console.log(`API listening on port ${env.PORT} (${env.NODE_ENV})`);

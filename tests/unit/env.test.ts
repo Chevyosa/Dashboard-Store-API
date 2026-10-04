@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EnvError, loadEnv } from '../../src/config/env.js';
+import { EnvError, corsOrigins, loadEnv } from '../../src/config/env.js';
 
 const valid = {
   NODE_ENV: 'test',
@@ -22,6 +22,19 @@ describe('loadEnv', () => {
     expect(env.PORT).toBe(4000);
     expect(env.DB_CONNECTION_LIMIT).toBe(5);
     expect(env.COOKIE_DOMAIN).toBeUndefined();
+  });
+
+  it('defaults TRUST_PROXY to 0 and accepts hop counts', () => {
+    expect(loadEnv(valid).TRUST_PROXY).toBe(0);
+    expect(loadEnv({ ...valid, TRUST_PROXY: '1' }).TRUST_PROXY).toBe(1);
+    expect(() => loadEnv({ ...valid, TRUST_PROXY: '-1' })).toThrow(EnvError);
+  });
+
+  it('splits CORS_ORIGIN on commas', () => {
+    expect(corsOrigins({ CORS_ORIGIN: 'http://a.test, https://b.test ,' })).toEqual([
+      'http://a.test',
+      'https://b.test',
+    ]);
   });
 
   it('fails fast listing every problem without leaking values', () => {

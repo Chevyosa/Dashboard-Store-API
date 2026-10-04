@@ -1,9 +1,14 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app.js';
+import { createTestPool, getTestEnv } from '../helpers/db.js';
 
 describe('GET /health', () => {
-  const app = createApp();
+  const pool = createTestPool();
+  const app = createApp({ pool, env: getTestEnv() });
+  afterAll(async () => {
+    await pool.end();
+  });
 
   it('returns ok without auth or sensitive data', async () => {
     const res = await request(app).get('/health');
