@@ -1,0 +1,28 @@
+{
+  "id": "G11",
+  "name": "Tanpa pembulatan",
+  "description": "Jual 7.777; pct 3.65; sold 3",
+  "product": {
+    "productId": "g11-no-rounding",
+    "ownerType": "consignor",
+    "consignorId": "consignor-unrounded",
+    "sellPrice": "7777",
+    "marginScheme": {
+      "type": "percent",
+      "marginPercentage": "3.65"
+    },
+    "openingQty": 0,
+    "inQty": 3,
+    "physicalQty": 0,
+    "losses": []
+  },
+  "expected": {
+    "soldQty": 3,
+    "turnover": "23331",
+    "ownerMarginPerPcs": "283.8605",
+    "ownerMarginTotal": "851.5815",
+    "consignorSharePerPcs": "7493.1395",
+    "soldShare": "22479.4185",
+    "payoutDue": "22479.4185"
+  }
+}

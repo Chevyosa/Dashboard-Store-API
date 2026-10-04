@@ -1,0 +1,39 @@
+{
+  "id": "G10",
+  "name": "Persen + loss ditanggung owner",
+  "description": "Jual 10.000; pct 3.65; in 20; fisik 5; loss 1 (damaged_on_display, owner)",
+  "product": {
+    "productId": "g10-kak-peja-loss-owner",
+    "ownerType": "consignor",
+    "consignorId": "consignor-kak-peja",
+    "sellPrice": "10000",
+    "marginScheme": {
+      "type": "percent",
+      "marginPercentage": "3.65"
+    },
+    "openingQty": 0,
+    "inQty": 20,
+    "physicalQty": 5,
+    "losses": [
+      {
+        "qty": 1,
+        "reason": "damaged_on_display",
+        "borneBy": "owner",
+        "note": "Rusak di etalase"
+      }
+    ]
+  },
+  "expected": {
+    "diffQty": 15,
+    "lossQty": 1,
+    "soldQty": 14,
+    "turnover": "140000",
+    "ownerMarginPerPcs": "365",
+    "ownerMarginTotal": "5110",
+    "consignorSharePerPcs": "9635",
+    "soldShare": "134890",
+    "lossCompensation": "9635",
+    "payoutDue": "144525",
+    "profitAContribution": "-4525"
+  }
+}

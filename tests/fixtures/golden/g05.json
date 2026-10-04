@@ -1,0 +1,39 @@
+{
+  "id": "G5",
+  "name": "Loss titipan ditanggung penitip",
+  "description": "G2 tapi fisik 2; loss 1 (expired, consignor)",
+  "product": {
+    "productId": "g5-pak-sani-loss-consignor",
+    "ownerType": "consignor",
+    "consignorId": "consignor-pak-sani",
+    "sellPrice": "7000",
+    "marginScheme": {
+      "type": "nominal",
+      "marginValue": "1000"
+    },
+    "openingQty": 0,
+    "inQty": 10,
+    "physicalQty": 2,
+    "losses": [
+      {
+        "qty": 1,
+        "reason": "expired",
+        "borneBy": "consignor",
+        "note": "Kadaluwarsa"
+      }
+    ]
+  },
+  "expected": {
+    "diffQty": 8,
+    "lossQty": 1,
+    "soldQty": 7,
+    "turnover": "49000",
+    "ownerMarginPerPcs": "1000",
+    "consignorSharePerPcs": "6000",
+    "ownerMarginTotal": "7000",
+    "soldShare": "42000",
+    "lossCompensation": "0",
+    "payoutDue": "42000",
+    "profitAContribution": "7000"
+  }
+}
