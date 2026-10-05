@@ -16,6 +16,7 @@ import { createProductRouter } from './routes/product.js';
 import { createStockInRouter } from './routes/stock-in.js';
 import { createStockReturnRouter } from './routes/stock-return.js';
 import { createLossRouter } from './routes/loss.js';
+import { createOpnameRouter } from './routes/opname.js';
 import { createHealthRouter } from './routes/health.js';
 import { createAuthController } from './controllers/auth.controller.js';
 import { createConsignorController } from './controllers/consignor.controller.js';
@@ -23,12 +24,14 @@ import { createProductController } from './controllers/product.controller.js';
 import { createStockInController } from './controllers/stock-in.controller.js';
 import { createStockReturnController } from './controllers/stock-return.controller.js';
 import { createLossController } from './controllers/loss.controller.js';
+import { createOpnameController } from './controllers/opname.controller.js';
 import { createAuthService } from './services/auth.service.js';
 import { createConsignorService } from './services/consignor.service.js';
 import { createProductService } from './services/product.service.js';
 import { createStockInService } from './services/stock-in.service.js';
 import { createStockReturnService } from './services/stock-return.service.js';
 import { createLossService } from './services/loss.service.js';
+import { createOpnameService } from './services/opname.service.js';
 import type { Clock } from './utils/time.js';
 
 export interface AppDeps {
@@ -95,6 +98,12 @@ export function createApp(deps: AppDeps): Express {
   });
   const lossController = createLossController(lossService);
 
+  const opnameService = createOpnameService({
+    pool,
+    ...(deps.clock === undefined ? {} : { clock: deps.clock }),
+  });
+  const opnameController = createOpnameController(opnameService);
+
   // Everything under /api/v1 needs a session except login/logout (AGENTS.md §8).
   // requireAuth sits before the 404 handler so unknown routes do not leak without a session.
   const api = express.Router();
@@ -107,6 +116,7 @@ export function createApp(deps: AppDeps): Express {
   api.use(createStockInRouter(stockInController));
   api.use(createStockReturnRouter(stockReturnController));
   api.use(createLossRouter(lossController));
+  api.use(createOpnameRouter(opnameController));
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);
