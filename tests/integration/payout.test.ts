@@ -1,5 +1,5 @@
 import type { Express } from 'express';
-import type { RowDataPacket } from 'mysql2/promise';
+import type { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
 import request from 'supertest';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app.js';
@@ -126,7 +126,7 @@ describe('Payouts & Ledger API (/api/v1/payouts)', () => {
       const consignorId = consignorRes.body.data.id;
 
       // 2. Simulate opname final with 60.000 payout_due
-      const [opnameRes] = await pool.execute<mysql.ResultSetHeader>(
+      const [opnameRes] = await pool.execute<ResultSetHeader>(
         `INSERT INTO opnames (opname_date, status, total_turnover, total_sold_qty, total_loss_qty, total_cogs, total_payout_due)
          VALUES ('2026-03-01', 'final', 100000, 20, 0, 0, 60000)`,
       );
