@@ -12,6 +12,7 @@ import {
   type LossItem,
 } from '../domain/opname.js';
 import { calculateConsignorPayouts } from '../domain/payout.js';
+import { calculateReconciliation, type ReconciliationResult } from '../domain/profit.js';
 import {
   DomainError,
   NegativeDiffStockError,
@@ -51,6 +52,12 @@ export interface OpnameTotals {
   totalLossQty: number;
   totalCogs: string;
   totalPayoutDue: string;
+  cashAmount: string;
+  qrisAmount: string;
+  realCash: string;
+  cashDifference: string;
+  profitA: string;
+  profitB: string;
 }
 
 export interface PreparedSheetProduct {
@@ -81,11 +88,24 @@ export function createOpnameService({ pool, clock = systemClock }: OpnameService
   async function computeOpnameData(
     opnameDate: string,
     items: PhysicalItemInput[],
-    db: Db,
+    cashAmountStr = '0',
+    qrisAmountStr = '0',
+    existingOpnameId: number | null = null,
+    db: Db = pool,
   ): Promise<{
     calculatedItems: Omit<OpnameItemEntity, 'id' | 'opnameId' | 'createdAt' | 'updatedAt'>[];
     calculatedPayouts: { consignorId: number; soldShare: string; lossCompensation: string; payoutDue: string }[];
     totals: OpnameTotals;
+    reconciliation: {
+      theoreticalTurnover: string;
+      realCash: string;
+      cashDifference: string;
+      cashDifferenceHint: string;
+      profitA: string;
+      profitB: string;
+      profitDiff: string;
+      invariantI3Satisfied: boolean;
+    };
   }> {
     const prevClosing = await opnameRepo.findPreviousOpname(opnameDate, db);
     const openMovements = await opnameRepo.findOpenMovements(opnameDate, db);
@@ -238,6 +258,18 @@ export function createOpnameService({ pool, clock = systemClock }: OpnameService
     const totalPayoutDue = toDbString(
       dbPayouts.reduce((acc, p) => addMoney(acc, p.payoutDue), ZERO_MONEY),
     );
+    const modalBelanjaOwn = await opnameRepo.getModalBelanjaOwnForOpname(
+      opnameDate,
+      existingOpnameId,
+      db,
+    );
+
+    const recResult: ReconciliationResult = calculateReconciliation({
+      products: calculatedResults,
+      cashAmount: cashAmountStr,
+      qrisAmount: qrisAmountStr,
+      modalBelanjaOwn,
+    });
 
     const totals: OpnameTotals = {
       totalTurnover,
@@ -245,12 +277,28 @@ export function createOpnameService({ pool, clock = systemClock }: OpnameService
       totalLossQty,
       totalCogs,
       totalPayoutDue,
+      cashAmount: toDbString(recResult.cashAmount),
+      qrisAmount: toDbString(recResult.qrisAmount),
+      realCash: toDbString(recResult.realCash),
+      cashDifference: toDbString(recResult.cashDifference),
+      profitA: toDbString(recResult.profitA),
+      profitB: toDbString(recResult.profitB),
     };
 
     return {
       calculatedItems: dbItems,
       calculatedPayouts: dbPayouts,
       totals,
+      reconciliation: {
+        theoreticalTurnover: toDbString(recResult.theoreticalTurnover),
+        realCash: toDbString(recResult.realCash),
+        cashDifference: toDbString(recResult.cashDifference),
+        cashDifferenceHint: recResult.cashDifferenceHint,
+        profitA: toDbString(recResult.profitA),
+        profitB: toDbString(recResult.profitB),
+        profitDiff: toDbString(recResult.profitDiff),
+        invariantI3Satisfied: recResult.invariantI3Satisfied,
+      },
     };
   }
 
@@ -345,8 +393,21 @@ export function createOpnameService({ pool, clock = systemClock }: OpnameService
       };
     },
 
-    async calculateDraft(opnameDate: string, items: PhysicalItemInput[]) {
-      return computeOpnameData(opnameDate, items, pool);
+    async calculateDraft(
+      opnameDate: string,
+      items: PhysicalItemInput[],
+      cashAmount = '0',
+      qrisAmount = '0',
+    ) {
+      const existing = await opnameRepo.findByDate(opnameDate, pool);
+      return computeOpnameData(
+        opnameDate,
+        items,
+        cashAmount,
+        qrisAmount,
+        existing ? existing.id : null,
+        pool,
+      );
     },
 
     async saveDraft(
@@ -368,6 +429,9 @@ export function createOpnameService({ pool, clock = systemClock }: OpnameService
       const { calculatedItems, calculatedPayouts, totals } = await computeOpnameData(
         input.opnameDate,
         input.items,
+        input.cashAmount ?? '0',
+        input.qrisAmount ?? '0',
+        existing ? existing.id : null,
         pool,
       );
 
@@ -382,6 +446,12 @@ export function createOpnameService({ pool, clock = systemClock }: OpnameService
             totalLossQty: totals.totalLossQty,
             totalCogs: totals.totalCogs,
             totalPayoutDue: totals.totalPayoutDue,
+            cashAmount: totals.cashAmount,
+            qrisAmount: totals.qrisAmount,
+            realCash: totals.realCash,
+            cashDifference: totals.cashDifference,
+            profitA: totals.profitA,
+            profitB: totals.profitB,
           },
           conn,
         );
@@ -433,6 +503,9 @@ export function createOpnameService({ pool, clock = systemClock }: OpnameService
       const { calculatedItems, calculatedPayouts, totals } = await computeOpnameData(
         input.opnameDate,
         input.items,
+        input.cashAmount ?? '0',
+        input.qrisAmount ?? '0',
+        existing ? existing.id : null,
         pool,
       );
 
@@ -447,6 +520,12 @@ export function createOpnameService({ pool, clock = systemClock }: OpnameService
             totalLossQty: totals.totalLossQty,
             totalCogs: totals.totalCogs,
             totalPayoutDue: totals.totalPayoutDue,
+            cashAmount: totals.cashAmount,
+            qrisAmount: totals.qrisAmount,
+            realCash: totals.realCash,
+            cashDifference: totals.cashDifference,
+            profitA: totals.profitA,
+            profitB: totals.profitB,
           },
           conn,
         );

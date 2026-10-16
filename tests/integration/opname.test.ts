@@ -564,5 +564,82 @@ describe('Opname API (/api/v1/opnames)', () => {
       expect(repeatRes.status).toBe(409);
       expect(repeatRes.body.error.code).toBe('PERIOD_ALREADY_FINALIZED');
     });
+
+    it('records weekly cash intake, persists reconciliation figures in DB, and serves them in detail and list', async () => {
+      const geryId = await createProduct({
+        name: 'Gery Salut',
+        ownerType: 'own',
+        sellPrice: '1500.0000',
+        pcsPerPack: 10,
+      });
+
+      await authedPost('/api/v1/stock-ins', {
+        type: 'purchase',
+        date: '2026-10-01',
+        lines: [{ productId: geryId, inputMode: 'pack', qtyPack: 1, totalCost: '10000.0000' }],
+      });
+
+      // Draft with cashAmount 7000 and qrisAmount 3000
+      // 10 in stock, 3 physical -> 7 sold @ 1500 = 10500 turnover
+      // real cash = 10000, difference = 10000 - 10500 = -500
+      const draftRes = await authedPost('/api/v1/opnames/draft', {
+        opnameDate: '2026-10-02',
+        note: 'Draf kas mingguan',
+        items: [{ productId: geryId, physicalQty: 3 }],
+        cashAmount: '7000.0000',
+        qrisAmount: '3000.0000',
+      });
+
+      expect(draftRes.status).toBe(200);
+      expect(draftRes.body.data.cashAmount).toBe('7000.0000');
+      expect(draftRes.body.data.qrisAmount).toBe('3000.0000');
+      expect(draftRes.body.data.realCash).toBe('10000.0000');
+      expect(draftRes.body.data.cashDifference).toBe('-500.0000');
+      expect(draftRes.body.data.profitA).toBe('3500.0000');
+      expect(draftRes.body.data.profitB).toBe('0.0000');
+
+      // Finalize with cash intake (exact match)
+      const finalRes = await authedPost('/api/v1/opnames/finalize', {
+        opnameDate: '2026-10-02',
+        note: 'Finalisasi kas mingguan',
+        items: [{ productId: geryId, physicalQty: 3 }],
+        cashAmount: '8000.0000',
+        qrisAmount: '2500.0000',
+      });
+
+      expect(finalRes.status).toBe(201);
+      const opnameId = finalRes.body.data.id;
+      expect(finalRes.body.data.cashAmount).toBe('8000.0000');
+      expect(finalRes.body.data.qrisAmount).toBe('2500.0000');
+      expect(finalRes.body.data.realCash).toBe('10500.0000');
+      expect(finalRes.body.data.cashDifference).toBe('0.0000');
+      expect(finalRes.body.data.profitA).toBe('3500.0000');
+      expect(finalRes.body.data.profitB).toBe('500.0000');
+
+      // Verify DB persistence directly
+      const [dbRows] = await pool.query<RowDataPacket[]>(
+        'SELECT cash_amount, qris_amount, real_cash, cash_difference, profit_a, profit_b FROM opnames WHERE id = ?',
+        [opnameId],
+      );
+      expect(String(dbRows[0]?.cash_amount)).toBe('8000.0000');
+      expect(String(dbRows[0]?.qris_amount)).toBe('2500.0000');
+      expect(String(dbRows[0]?.real_cash)).toBe('10500.0000');
+      expect(String(dbRows[0]?.cash_difference)).toBe('0.0000');
+      expect(String(dbRows[0]?.profit_a)).toBe('3500.0000');
+      expect(String(dbRows[0]?.profit_b)).toBe('500.0000');
+
+      // Verify GET /api/v1/opnames/:id returns the cash reconciliation
+      const getRes = await authedGet(`/api/v1/opnames/${opnameId}`);
+      expect(getRes.status).toBe(200);
+      expect(getRes.body.data.realCash).toBe('10500.0000');
+      expect(getRes.body.data.cashDifference).toBe('0.0000');
+
+      // Verify GET /api/v1/opnames (list) returns the cash reconciliation
+      const listRes = await authedGet('/api/v1/opnames');
+      expect(listRes.status).toBe(200);
+      const found = listRes.body.data.find((o: { id: number }) => o.id === opnameId);
+      expect(found).toBeDefined();
+      expect(found.realCash).toBe('10500.0000');
+    });
   });
 });

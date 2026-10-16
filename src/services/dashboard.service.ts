@@ -7,7 +7,6 @@ import { dashboardRepository, type DashboardRepository } from '../repositories/d
 import { OpnameRepository, type OpnameItemEntity } from '../repositories/opname.repository.js';
 import { AppError } from '../utils/errors.js';
 import type { Clock } from '../utils/time.js';
-import { systemClock } from '../utils/time.js';
 import type { ReconciliationInputParams } from '../validators/dashboard.js';
 
 export interface DashboardServiceDeps {
@@ -42,7 +41,7 @@ export interface FormattedReconciliationResult {
 }
 
 export function createDashboardService(deps: DashboardServiceDeps) {
-  const { pool, clock = systemClock } = deps;
+  const { pool } = deps;
   const dashRepo = deps.dashboardRepo ?? dashboardRepository;
   const opnameRepo = deps.opnameRepo ?? new OpnameRepository();
 
@@ -161,12 +160,12 @@ export function createDashboardService(deps: DashboardServiceDeps) {
       if (overview.latestOpname) {
         turnoverBreakdown = await dashRepo.getTurnoverBreakdown(overview.latestOpname.id, pool);
         topProducts = await dashRepo.getTopSellingProducts(overview.latestOpname.id, 5, pool);
-        // Default reconciliation: assuming cash equals theoretical turnover for baseline view
+        // Default reconciliation: use the saved cashAmount and qrisAmount from the finalized opname
         try {
           latestReconciliation = await computeReconciliationForOpname(
             overview.latestOpname.id,
-            overview.latestOpname.totalTurnover,
-            '0.0000',
+            overview.latestOpname.cashAmount,
+            overview.latestOpname.qrisAmount,
           );
         } catch {
           latestReconciliation = null;

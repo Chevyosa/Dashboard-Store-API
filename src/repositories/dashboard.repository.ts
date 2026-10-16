@@ -16,6 +16,12 @@ export interface DashboardOverviewData {
     totalLossQty: number;
     totalCogs: string;
     totalPayoutDue: string;
+    cashAmount: string;
+    qrisAmount: string;
+    realCash: string;
+    cashDifference: string;
+    profitA: string;
+    profitB: string;
   } | null;
   hasActiveDraft: boolean;
   activeDraftDate: string | null;
@@ -76,7 +82,7 @@ export class DashboardRepository {
     );
     const activeConsignorsCount = Number(consignorCountRows[0]?.total ?? 0);
 
-    // 2. Latest final opname
+    // 3. Latest final opname
     const [latestOpnameRows] = await db.execute<RowDataPacket[]>(
       `SELECT
          id,
@@ -86,7 +92,13 @@ export class DashboardRepository {
          total_sold_qty,
          total_loss_qty,
          total_cogs,
-         total_payout_due
+         total_payout_due,
+         cash_amount,
+         qris_amount,
+         real_cash,
+         cash_difference,
+         profit_a,
+         profit_b
        FROM opnames
        WHERE status = 'final'
        ORDER BY opname_date DESC, id DESC
@@ -108,6 +120,12 @@ export class DashboardRepository {
         totalLossQty: Number(row.total_loss_qty),
         totalCogs: String(row.total_cogs),
         totalPayoutDue: String(row.total_payout_due),
+        cashAmount: String(row.cash_amount ?? '0.0000'),
+        qrisAmount: String(row.qris_amount ?? '0.0000'),
+        realCash: String(row.real_cash ?? '0.0000'),
+        cashDifference: String(row.cash_difference ?? '0.0000'),
+        profitA: String(row.profit_a ?? '0.0000'),
+        profitB: String(row.profit_b ?? '0.0000'),
       };
     }
 

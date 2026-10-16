@@ -17,6 +17,15 @@ function isValidCalendarDate(dateStr: string): boolean {
   );
 }
 
+const MONEY_REGEX = /^\d+(\.\d{1,4})?$/;
+
+const moneyField = z
+  .preprocess((val) => {
+    if (val === undefined || val === null || val === '') return '0';
+    return String(val).trim();
+  }, z.string().regex(MONEY_REGEX, 'Format nominal uang tidak valid'))
+  .default('0');
+
 export const physicalItemInputSchema = z.object({
   productId: z
     .number()
@@ -39,6 +48,8 @@ export const calculateOpnameSchema = z.object({
     message: 'Tanggal opname tidak valid (format YYYY-MM-DD)',
   }),
   items: z.array(physicalItemInputSchema),
+  cashAmount: moneyField,
+  qrisAmount: moneyField,
 });
 
 export const saveDraftOpnameSchema = z.object({
@@ -47,6 +58,8 @@ export const saveDraftOpnameSchema = z.object({
   }),
   note: z.string().trim().max(1000, 'Catatan maksimal 1000 karakter').nullable().optional(),
   items: z.array(physicalItemInputSchema),
+  cashAmount: moneyField,
+  qrisAmount: moneyField,
 });
 
 export const finalizeOpnameSchema = z.object({
@@ -57,6 +70,8 @@ export const finalizeOpnameSchema = z.object({
   items: z
     .array(physicalItemInputSchema)
     .min(1, 'Minimal satu produk dalam pencatatan opname'),
+  cashAmount: moneyField,
+  qrisAmount: moneyField,
 });
 
 export const listOpnamesQuerySchema = z.object({

@@ -61,6 +61,12 @@ export interface OpnameEntity {
   totalLossQty: number;
   totalCogs: string;
   totalPayoutDue: string;
+  cashAmount: string;
+  qrisAmount: string;
+  realCash: string;
+  cashDifference: string;
+  profitA: string;
+  profitB: string;
   createdAt: string;
   updatedAt: string;
   items?: OpnameItemEntity[] | undefined;
@@ -95,6 +101,12 @@ interface OpnameRow extends RowDataPacket {
   total_loss_qty: number;
   total_cogs: string;
   total_payout_due: string;
+  cash_amount: string;
+  qris_amount: string;
+  real_cash: string;
+  cash_difference: string;
+  profit_a: string;
+  profit_b: string;
   created_at: string;
   updated_at: string;
 }
@@ -158,6 +170,12 @@ function mapOpnameRowToEntity(row: OpnameRow): OpnameEntity {
     totalLossQty: Number(row.total_loss_qty),
     totalCogs: String(row.total_cogs),
     totalPayoutDue: String(row.total_payout_due),
+    cashAmount: String(row.cash_amount ?? '0.0000'),
+    qrisAmount: String(row.qris_amount ?? '0.0000'),
+    realCash: String(row.real_cash ?? '0.0000'),
+    cashDifference: String(row.cash_difference ?? '0.0000'),
+    profitA: String(row.profit_a ?? '0.0000'),
+    profitB: String(row.profit_b ?? '0.0000'),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -228,6 +246,12 @@ export class OpnameRepository {
          total_loss_qty,
          total_cogs,
          total_payout_due,
+         cash_amount,
+         qris_amount,
+         real_cash,
+         cash_difference,
+         profit_a,
+         profit_b,
          DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
          DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at
        FROM opnames
@@ -250,6 +274,12 @@ export class OpnameRepository {
          total_loss_qty,
          total_cogs,
          total_payout_due,
+         cash_amount,
+         qris_amount,
+         real_cash,
+         cash_difference,
+         profit_a,
+         profit_b,
          DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
          DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at
        FROM opnames
@@ -423,9 +453,22 @@ export class OpnameRepository {
       totalLossQty: number;
       totalCogs: string;
       totalPayoutDue: string;
+      cashAmount?: string;
+      qrisAmount?: string;
+      realCash?: string;
+      cashDifference?: string;
+      profitA?: string;
+      profitB?: string;
     },
     db: Db,
   ): Promise<number> {
+    const cashAmount = data.cashAmount ?? '0.0000';
+    const qrisAmount = data.qrisAmount ?? '0.0000';
+    const realCash = data.realCash ?? '0.0000';
+    const cashDifference = data.cashDifference ?? '0.0000';
+    const profitA = data.profitA ?? '0.0000';
+    const profitB = data.profitB ?? '0.0000';
+
     const [existing] = await db.execute<RowDataPacket[]>(
       'SELECT id, status FROM opnames WHERE opname_date = ?',
       [data.opnameDate],
@@ -436,7 +479,9 @@ export class OpnameRepository {
       await db.execute(
         `UPDATE opnames
          SET status = ?, note = ?, total_turnover = ?, total_sold_qty = ?,
-             total_loss_qty = ?, total_cogs = ?, total_payout_due = ?
+             total_loss_qty = ?, total_cogs = ?, total_payout_due = ?,
+             cash_amount = ?, qris_amount = ?, real_cash = ?,
+             cash_difference = ?, profit_a = ?, profit_b = ?
          WHERE id = ?`,
         [
           data.status,
@@ -446,6 +491,12 @@ export class OpnameRepository {
           data.totalLossQty,
           data.totalCogs,
           data.totalPayoutDue,
+          cashAmount,
+          qrisAmount,
+          realCash,
+          cashDifference,
+          profitA,
+          profitB,
           id,
         ],
       );
@@ -454,8 +505,9 @@ export class OpnameRepository {
 
     const [res] = await db.execute<ResultSetHeader>(
       `INSERT INTO opnames
-         (opname_date, status, note, total_turnover, total_sold_qty, total_loss_qty, total_cogs, total_payout_due)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (opname_date, status, note, total_turnover, total_sold_qty, total_loss_qty, total_cogs, total_payout_due,
+          cash_amount, qris_amount, real_cash, cash_difference, profit_a, profit_b)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.opnameDate,
         data.status,
@@ -465,9 +517,28 @@ export class OpnameRepository {
         data.totalLossQty,
         data.totalCogs,
         data.totalPayoutDue,
+        cashAmount,
+        qrisAmount,
+        realCash,
+        cashDifference,
+        profitA,
+        profitB,
       ],
     );
     return res.insertId;
+  }
+
+  async getModalBelanjaOwnForOpname(opnameDate: string, opnameId: number | null, db: Db): Promise<string> {
+    const [rows] = await db.execute<RowDataPacket[]>(
+      `SELECT COALESCE(SUM(sil.total_cost), 0) AS total_modal_belanja_own
+       FROM stock_ins si
+       JOIN stock_in_lines sil ON sil.stock_in_id = si.id
+       JOIN products p ON p.id = sil.product_id
+       WHERE (si.opname_id = ? OR (si.opname_id IS NULL AND si.date <= ?))
+         AND p.owner_type = 'own' AND si.type = 'purchase'`,
+      [opnameId ?? -1, opnameDate],
+    );
+    return String(rows[0]?.total_modal_belanja_own ?? '0.0000');
   }
 
   async saveOpnameItems(
@@ -604,6 +675,12 @@ export class OpnameRepository {
         total_loss_qty,
         total_cogs,
         total_payout_due,
+        cash_amount,
+        qris_amount,
+        real_cash,
+        cash_difference,
+        profit_a,
+        profit_b,
         DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
         DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at
       FROM opnames

@@ -32,7 +32,12 @@ export function createOpnameController(service: OpnameServiceInstance) {
 
     async calculate(req: Request, res: Response): Promise<void> {
       const input = parseOrThrow(calculateOpnameSchema, req.body);
-      const result = await service.calculateDraft(input.opnameDate, input.items);
+      const result = await service.calculateDraft(
+        input.opnameDate,
+        input.items,
+        input.cashAmount,
+        input.qrisAmount,
+      );
       res.status(200).json({ data: result });
     },
 

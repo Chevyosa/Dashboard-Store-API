@@ -159,6 +159,7 @@ describe('Payouts & Ledger API (/api/v1/payouts)', () => {
       });
       expect(pay1Res.status).toBe(201);
       const pay1Id = pay1Res.body.data.id;
+      expect(pay1Id).toBeDefined();
 
       const step2 = await authedGet(`/api/v1/payouts/ledgers/${consignorId}`);
       expect(step2.body.data.summary.totalPayment).toBe('40000.0000');
