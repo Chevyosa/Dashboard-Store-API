@@ -91,8 +91,8 @@ export function calculateConsignorLedger(
   let totalPayment = ZERO_MONEY;
   for (const pay of payments) {
     const parsed = parseMoney(pay);
-    if (parsed.lte(ZERO_MONEY)) {
-      throw new InvalidMoneyError('Nominal pembayaran penitip harus lebih besar dari 0');
+    if (parsed.isNegative()) {
+      throw new InvalidMoneyError('Nominal pembayaran penitip tidak boleh negatif');
     }
     totalPayment = addMoney(totalPayment, parsed);
   }

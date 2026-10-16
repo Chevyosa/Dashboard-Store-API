@@ -5,7 +5,7 @@ import {
   type ConsignorLedgerStatus,
   type ConsignorLedgerSummary,
 } from '../domain/payout.js';
-import { addMoney, ZERO_MONEY, toDbString } from '../domain/money.js';
+import { addMoney, parseMoney, ZERO_MONEY, toDbString } from '../domain/money.js';
 import { insertAuditEntry } from '../repositories/audit.repository.js';
 import { findConsignorById } from '../repositories/consignor.repository.js';
 import { OpnameRepository } from '../repositories/opname.repository.js';
@@ -193,10 +193,12 @@ export function createPayoutService({ pool, clock = systemClock }: PayoutService
       const items: ConsignorLedgerItem[] = [];
 
       for (const row of rawRows) {
+        const accruals = parseMoney(row.totalAccrual).isZero() ? [] : [row.totalAccrual];
+        const payments = parseMoney(row.totalPayment).isZero() ? [] : [row.totalPayment];
         const summary = calculateConsignorLedger(
           String(row.consignorId),
-          [row.totalAccrual],
-          [row.totalPayment],
+          accruals,
+          payments,
         );
 
         totalAccrualDecimal = addMoney(totalAccrualDecimal, summary.totalAccrual);

@@ -79,7 +79,9 @@ export function createStockInService({ pool, clock = systemClock }: StockInServi
           }
 
           // Pack vs Pcs
-          const pcsPerPack = product.pcsPerPack > 0 ? product.pcsPerPack : 1;
+          const pcsPerPack = line.pcsPerPack && line.pcsPerPack > 0
+            ? line.pcsPerPack
+            : (product.pcsPerPack > 0 ? product.pcsPerPack : 1);
           const qtyPack = line.inputMode === 'pack' ? (line.qtyPack ?? 1) : null;
           const qtyPcs = line.inputMode === 'pack' ? qtyPack! * pcsPerPack : (line.qtyPcs ?? 1);
 
@@ -215,7 +217,9 @@ export function createStockInService({ pool, clock = systemClock }: StockInServi
               lineCost = toDbString(costDec);
             }
 
-            const pcsPerPack = product.pcsPerPack > 0 ? product.pcsPerPack : 1;
+            const pcsPerPack = line.pcsPerPack && line.pcsPerPack > 0
+              ? line.pcsPerPack
+              : (product.pcsPerPack > 0 ? product.pcsPerPack : 1);
             const qtyPack = line.inputMode === 'pack' ? (line.qtyPack ?? 1) : null;
             const qtyPcs = line.inputMode === 'pack' ? qtyPack! * pcsPerPack : (line.qtyPcs ?? 1);
 

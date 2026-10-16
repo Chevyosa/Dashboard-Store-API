@@ -24,6 +24,7 @@ export const stockInLineInputSchema = z
     productId: z.number().int('ID produk harus integer').positive('ID produk tidak valid'),
     inputMode: z.enum(['pack', 'pcs']).default('pcs'),
     qtyPack: z.number().int('Qty pack harus integer').positive('Qty pack minimal 1').nullable().optional(),
+    pcsPerPack: z.number().int('Isi per pack harus integer').positive('Isi per pack minimal 1').nullable().optional(),
     qtyPcs: z.number().int('Qty pcs harus integer').positive('Qty pcs minimal 1').nullable().optional(),
     totalCost: z
       .string()

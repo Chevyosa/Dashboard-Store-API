@@ -115,13 +115,17 @@ describe('domain/payout', () => {
       );
     });
 
-    it('rejects non-positive payments (payment <= 0)', () => {
-      expect(() => calculateConsignorLedger('c-1', ['1000'], ['0'])).toThrow(
-        InvalidMoneyError,
-      );
+    it('rejects negative payments', () => {
       expect(() => calculateConsignorLedger('c-1', ['1000'], ['-500'])).toThrow(
         InvalidMoneyError,
       );
+    });
+
+    it('tolerates zero payments gracefully in ledger calculation', () => {
+      const result = calculateConsignorLedger('c-1', ['1000'], ['0']);
+      expect(result.totalPayment.toString()).toBe('0');
+      expect(result.balance.toString()).toBe('1000');
+      expect(result.status).toBe('unpaid');
     });
   });
 });

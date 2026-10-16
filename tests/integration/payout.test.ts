@@ -225,4 +225,21 @@ describe('Payouts & Ledger API (/api/v1/payouts)', () => {
       expect(auditRows.some((r) => r.action === 'consignor_payment.deleted')).toBe(true);
     });
   });
+
+  describe('Consignor Ledgers Overview regression', () => {
+    it('successfully lists consignor ledgers when consignor has 0 payments and 0 accruals without throwing 500', async () => {
+      await authedPost('/api/v1/consignors', {
+        name: 'Bu Dewi',
+        phone: '08987654321',
+      });
+
+      const res = await authedGet('/api/v1/payouts/ledgers');
+      expect(res.status).toBe(200);
+      expect(res.body.data.ledgers).toHaveLength(1);
+      expect(res.body.data.ledgers[0].consignorName).toBe('Bu Dewi');
+      expect(res.body.data.ledgers[0].totalPayment).toBe('0.0000');
+      expect(res.body.data.ledgers[0].totalAccrual).toBe('0.0000');
+      expect(res.body.data.ledgers[0].status).toBe('settled');
+    });
+  });
 });
