@@ -8,6 +8,7 @@ import { OpnameRepository, type OpnameItemEntity } from '../repositories/opname.
 import { AppError } from '../utils/errors.js';
 import type { Clock } from '../utils/time.js';
 import type { ReconciliationInputParams } from '../validators/dashboard.js';
+import { createTakeProfitService, type FormattedTakeProfitOverview } from './take-profit.service.js';
 
 export interface DashboardServiceDeps {
   pool: Pool;
@@ -176,6 +177,17 @@ export function createDashboardService(deps: DashboardServiceDeps) {
       const recentOpnames = await dashRepo.getRecentOpnames(5, pool);
       const opnameOptions = await dashRepo.getFinalizedOpnameOptions(pool);
 
+      let takeProfit: FormattedTakeProfitOverview | null = null;
+      try {
+        const takeProfitService = createTakeProfitService({
+          pool,
+          ...(deps.clock === undefined ? {} : { clock: deps.clock }),
+        });
+        takeProfit = await takeProfitService.getOverview();
+      } catch {
+        takeProfit = null;
+      }
+
       return {
         overview,
         turnoverBreakdown,
@@ -184,6 +196,7 @@ export function createDashboardService(deps: DashboardServiceDeps) {
         recentOpnames,
         opnameOptions,
         latestReconciliation,
+        takeProfit,
       };
     },
 
