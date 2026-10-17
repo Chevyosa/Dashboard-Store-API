@@ -143,7 +143,7 @@ describe('Take Profit API (/api/v1/take-profits)', () => {
       );
 
       // Formula:
-      // Real Cash (1.000.000) - Unpaid Consignors (300.000) - Min Working Capital (400.000) - Withdrawn (0)
+      // Real Cash (1.000.000) - Payout (300.000) - Min Working Capital (400.000) - Withdrawn (0)
       // = 300.000 halal ditarik
       const res = await authedGet('/api/v1/take-profits/overview');
       expect(res.status).toBe(200);
@@ -151,14 +151,38 @@ describe('Take Profit API (/api/v1/take-profits)', () => {
         id: opnameId,
         opnameDate: '2026-03-01',
         realCash: '1000000.0000',
+        totalPayoutDue: '300000.0000',
       });
-      expect(res.body.data.totalUnpaidConsignorBalance).toBe('300000.0000');
+      expect(res.body.data.totalPayout).toBe('300000.0000');
+      expect(res.body.data.payoutPaid).toBe('0.0000');
+      expect(res.body.data.payoutUnpaid).toBe('300000.0000');
+      expect(res.body.data.payoutStatus).toBe('unpaid');
       expect(res.body.data.minWorkingCapital).toBe('400000.0000');
       expect(res.body.data.withdrawnCurrentPeriod).toBe('0.0000');
       expect(res.body.data.availableToWithdraw).toBe('300000.0000');
       expect(res.body.data.rawBalance).toBe('300000.0000');
       expect(res.body.data.isSafe).toBe(true);
       expect(res.body.data.warningReason).toBeNull();
+
+      // Now simulate owner paying the consignor Rp 300.000 (User's real scenario)
+      await authedPost('/api/v1/payouts/payments', {
+        consignorId,
+        amount: '300000',
+        paymentDate: '2026-03-02',
+        paymentMethod: 'cash',
+      });
+
+      // After payout is paid, totalPayout remains 300.000, payoutStatus transitions to 'settled',
+      // and availableToWithdraw remains consistently 300.000!
+      const resAfterPay = await authedGet('/api/v1/take-profits/overview');
+      expect(resAfterPay.status).toBe(200);
+      expect(resAfterPay.body.data.totalPayout).toBe('300000.0000');
+      expect(resAfterPay.body.data.payoutPaid).toBe('300000.0000');
+      expect(resAfterPay.body.data.payoutUnpaid).toBe('0.0000');
+      expect(resAfterPay.body.data.payoutStatus).toBe('settled');
+      expect(resAfterPay.body.data.availableToWithdraw).toBe('300000.0000');
+      expect(resAfterPay.body.data.rawBalance).toBe('300000.0000');
+      expect(resAfterPay.body.data.isSafe).toBe(true);
     });
 
     it('returns warning when cash is insufficient to cover liabilities and working capital', async () => {
@@ -214,7 +238,7 @@ describe('Take Profit API (/api/v1/take-profits)', () => {
         "SELECT * FROM audit_log WHERE action = 'store_settings.working_capital_updated'",
       );
       expect(logs).toHaveLength(1);
-      expect(logs[0].entity_id).toBe('min_working_capital');
+      expect(logs[0]?.entity_id).toBe('min_working_capital');
     });
 
     it('rejects invalid minWorkingCapital values', async () => {

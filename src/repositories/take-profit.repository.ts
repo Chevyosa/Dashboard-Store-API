@@ -194,12 +194,18 @@ export class TakeProfitRepository {
     return { data, total };
   }
 
-  async getLatestFinalOpname(db: Db): Promise<{ id: number; opnameDate: string; realCash: string } | null> {
+  async getLatestFinalOpname(db: Db): Promise<{
+    id: number;
+    opnameDate: string;
+    realCash: string;
+    totalPayoutDue: string;
+  } | null> {
     const [rows] = await db.execute<RowDataPacket[]>(
       `SELECT
          id,
          DATE_FORMAT(opname_date, '%Y-%m-%d') AS opname_date,
-         real_cash
+         real_cash,
+         total_payout_due
        FROM opnames
        WHERE status = 'final'
        ORDER BY opname_date DESC, id DESC
@@ -211,6 +217,22 @@ export class TakeProfitRepository {
       id: Number(rows[0].id),
       opnameDate: String(rows[0].opname_date),
       realCash: String(rows[0].real_cash ?? '0.0000'),
+      totalPayoutDue: String(rows[0].total_payout_due ?? '0.0000'),
+    };
+  }
+
+  async getPayoutFinancialSummary(db: Db): Promise<{
+    allTimeAccruals: string;
+    allTimePayments: string;
+  }> {
+    const [rows] = await db.execute<RowDataPacket[]>(
+      `SELECT
+         COALESCE((SELECT SUM(total_payout_due) FROM opnames WHERE status = 'final'), 0) AS all_time_accruals,
+         COALESCE((SELECT SUM(amount) FROM consignor_payments), 0) AS all_time_payments`,
+    );
+    return {
+      allTimeAccruals: String(rows[0]?.all_time_accruals ?? '0.0000'),
+      allTimePayments: String(rows[0]?.all_time_payments ?? '0.0000'),
     };
   }
 

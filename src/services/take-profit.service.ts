@@ -30,7 +30,12 @@ export interface FormattedTakeProfitOverview {
     id: number;
     opnameDate: string;
     realCash: string;
+    totalPayoutDue: string;
   } | null;
+  totalPayout: string;
+  payoutPaid: string;
+  payoutUnpaid: string;
+  payoutStatus: 'settled' | 'partial' | 'unpaid';
   totalUnpaidConsignorBalance: string;
   minWorkingCapital: string;
   withdrawnCurrentPeriod: string;
@@ -47,10 +52,32 @@ export function createTakeProfitService({ pool, clock = systemClock }: TakeProfi
   return {
     async getOverview(): Promise<FormattedTakeProfitOverview> {
       const latestOpname = await repo.getLatestFinalOpname(pool);
-      const totalUnpaidConsignorBalance = await repo.getTotalUnpaidConsignorBalance(pool);
       const savedMinCapital = await repo.getSetting('min_working_capital', pool);
       const minWorkingCapital = savedMinCapital ?? '400000.0000';
       const totalWithdrawnAllTime = await repo.getTotalWithdrawnAllTime(pool);
+
+      const { allTimeAccruals, allTimePayments } = await repo.getPayoutFinancialSummary(pool);
+      const accrualsDec = parseMoney(allTimeAccruals);
+      const paymentsDec = parseMoney(allTimePayments);
+      const unpaidBalanceDec = Decimal.max(0, accrualsDec.minus(paymentsDec));
+
+      const latestPayoutDueDec = latestOpname ? parseMoney(latestOpname.totalPayoutDue) : ZERO_MONEY;
+      // Total payout deduction = total payout for this opname (or total unpaid balance if higher due to older debts)
+      const totalPayoutDec = Decimal.max(latestPayoutDueDec, unpaidBalanceDec);
+
+      const payoutUnpaidDec = Decimal.min(totalPayoutDec, unpaidBalanceDec);
+      const payoutPaidDec = Decimal.max(0, totalPayoutDec.minus(payoutUnpaidDec));
+
+      let payoutStatus: 'settled' | 'partial' | 'unpaid' = 'unpaid';
+      if (totalPayoutDec.isZero()) {
+        payoutStatus = 'settled';
+      } else if (payoutUnpaidDec.isZero()) {
+        payoutStatus = 'settled';
+      } else if (payoutPaidDec.greaterThan(0)) {
+        payoutStatus = 'partial';
+      } else {
+        payoutStatus = 'unpaid';
+      }
 
       let withdrawnCurrentPeriod = '0.0000';
       let realCashDec = ZERO_MONEY;
@@ -59,13 +86,12 @@ export function createTakeProfitService({ pool, clock = systemClock }: TakeProfi
         realCashDec = parseMoney(latestOpname.realCash);
       }
 
-      const unpaidDec = parseMoney(totalUnpaidConsignorBalance);
       const workingCapitalDec = parseMoney(minWorkingCapital);
       const withdrawnPeriodDec = parseMoney(withdrawnCurrentPeriod);
 
-      // Raw balance = realCash - unpaid - workingCapital - withdrawnPeriod
+      // Final formula: Uang Masuk (realCash) - Payout (totalPayout) - Minimal Saldo Belanja (workingCapital) - Sudah Ditarik (withdrawnPeriod)
       const rawBalanceDec = realCashDec
-        .minus(unpaidDec)
+        .minus(totalPayoutDec)
         .minus(workingCapitalDec)
         .minus(withdrawnPeriodDec);
 
@@ -76,12 +102,16 @@ export function createTakeProfitService({ pool, clock = systemClock }: TakeProfi
       if (!latestOpname) {
         warningReason = 'Belum ada opname final. Selesaikan opname mingguan terlebih dahulu.';
       } else if (!isSafe) {
-        warningReason = 'Kas toko saat ini belum aman untuk ditarik karena belum mencukupi batas modal belanja dan kewajiban penitip.';
+        warningReason = 'Kas toko saat ini belum aman untuk ditarik karena belum mencukupi batas modal belanja dan payout penitip.';
       }
 
       return {
         latestOpname,
-        totalUnpaidConsignorBalance: toDbString(unpaidDec),
+        totalPayout: toDbString(totalPayoutDec),
+        payoutPaid: toDbString(payoutPaidDec),
+        payoutUnpaid: toDbString(payoutUnpaidDec),
+        payoutStatus,
+        totalUnpaidConsignorBalance: toDbString(payoutUnpaidDec),
         minWorkingCapital: toDbString(workingCapitalDec),
         withdrawnCurrentPeriod: toDbString(withdrawnPeriodDec),
         totalWithdrawnAllTime: toDbString(parseMoney(totalWithdrawnAllTime)),
