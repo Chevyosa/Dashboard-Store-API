@@ -18,6 +18,7 @@ import { createStockReturnRouter } from './routes/stock-return.js';
 import { createLossRouter } from './routes/loss.js';
 import { createOpnameRouter } from './routes/opname.js';
 import { createPayoutRouter } from './routes/payout.js';
+import { createTakeProfitRouter } from './routes/take-profit.js';
 import { createDashboardRouter } from './routes/dashboard.js';
 import { createAuditRouter } from './routes/audit.js';
 import { createHealthRouter } from './routes/health.js';
@@ -29,6 +30,7 @@ import { createStockReturnController } from './controllers/stock-return.controll
 import { createLossController } from './controllers/loss.controller.js';
 import { createOpnameController } from './controllers/opname.controller.js';
 import { createPayoutController } from './controllers/payout.controller.js';
+import { createTakeProfitController } from './controllers/take-profit.controller.js';
 import { createDashboardController } from './controllers/dashboard.controller.js';
 import { createAuditController } from './controllers/audit.controller.js';
 import { createAuthService } from './services/auth.service.js';
@@ -39,6 +41,7 @@ import { createStockReturnService } from './services/stock-return.service.js';
 import { createLossService } from './services/loss.service.js';
 import { createOpnameService } from './services/opname.service.js';
 import { createPayoutService } from './services/payout.service.js';
+import { createTakeProfitService } from './services/take-profit.service.js';
 import { createDashboardService } from './services/dashboard.service.js';
 import { createAuditService } from './services/audit.service.js';
 import type { Clock } from './utils/time.js';
@@ -119,6 +122,12 @@ export function createApp(deps: AppDeps): Express {
   });
   const payoutController = createPayoutController(payoutService);
 
+  const takeProfitService = createTakeProfitService({
+    pool,
+    ...(deps.clock === undefined ? {} : { clock: deps.clock }),
+  });
+  const takeProfitController = createTakeProfitController(takeProfitService);
+
   const dashboardService = createDashboardService({
     pool,
     ...(deps.clock === undefined ? {} : { clock: deps.clock }),
@@ -142,6 +151,7 @@ export function createApp(deps: AppDeps): Express {
   api.use(createLossRouter(lossController));
   api.use(createOpnameRouter(opnameController));
   api.use(createPayoutRouter(payoutController));
+  api.use(createTakeProfitRouter(takeProfitController));
   api.use(createDashboardRouter(dashboardController));
   api.use(createAuditRouter(auditController));
   app.use('/api/v1', api);
