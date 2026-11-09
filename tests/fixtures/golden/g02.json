@@ -1,0 +1,29 @@
+{
+  "id": "G2",
+  "name": "Titipan nominal (Pak Sani, contoh asli)",
+  "description": "Harga setor 6.000 + margin 1.000 -> jual 7.000; in 10; fisik 0",
+  "product": {
+    "productId": "g2-pak-sani",
+    "ownerType": "consignor",
+    "consignorId": "consignor-pak-sani",
+    "sellPrice": "7000",
+    "marginScheme": {
+      "type": "nominal",
+      "marginValue": "1000"
+    },
+    "openingQty": 0,
+    "inQty": 10,
+    "physicalQty": 0,
+    "losses": []
+  },
+  "expected": {
+    "soldQty": 10,
+    "turnover": "70000",
+    "ownerMarginPerPcs": "1000",
+    "consignorSharePerPcs": "6000",
+    "ownerMarginTotal": "10000",
+    "soldShare": "60000",
+    "lossCompensation": "0",
+    "payoutDue": "60000"
+  }
+}

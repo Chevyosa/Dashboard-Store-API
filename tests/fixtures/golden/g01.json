@@ -1,0 +1,29 @@
+{
+  "id": "G1",
+  "name": "Own + pack (Gery Salut)",
+  "description": "Beli 1 pack isi 10 @ 10.000; jual 1.500/pcs; opening 0; in 10; fisik 3; loss 0",
+  "product": {
+    "productId": "g1-gery-salut",
+    "ownerType": "own",
+    "sellPrice": "1500",
+    "pcsPerPack": 10,
+    "openingQty": 0,
+    "openingValue": "0",
+    "inQty": 10,
+    "inCost": "10000",
+    "physicalQty": 3,
+    "losses": []
+  },
+  "expected": {
+    "avgCost": "1000",
+    "marginPerPcs": "500",
+    "marginPerPack": "5000",
+    "expectedQty": 10,
+    "diffQty": 7,
+    "soldQty": 7,
+    "turnover": "10500",
+    "cogs": "7000",
+    "marginTotal": "3500",
+    "closingValue": "3000"
+  }
+}

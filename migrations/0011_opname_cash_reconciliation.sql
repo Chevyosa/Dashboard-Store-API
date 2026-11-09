@@ -1,0 +1,7 @@
+ALTER TABLE opnames
+  ADD COLUMN cash_amount DECIMAL(20,4) NOT NULL DEFAULT '0.0000' AFTER total_payout_due,
+  ADD COLUMN qris_amount DECIMAL(20,4) NOT NULL DEFAULT '0.0000' AFTER cash_amount,
+  ADD COLUMN real_cash DECIMAL(20,4) NOT NULL DEFAULT '0.0000' AFTER qris_amount,
+  ADD COLUMN cash_difference DECIMAL(20,4) NOT NULL DEFAULT '0.0000' AFTER real_cash,
+  ADD COLUMN profit_a DECIMAL(20,4) NOT NULL DEFAULT '0.0000' AFTER cash_difference,
+  ADD COLUMN profit_b DECIMAL(20,4) NOT NULL DEFAULT '0.0000' AFTER profit_a;

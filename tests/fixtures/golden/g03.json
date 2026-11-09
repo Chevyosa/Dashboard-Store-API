@@ -1,0 +1,29 @@
+{
+  "id": "G3",
+  "name": "Titipan persen (Kak Peja)",
+  "description": "Jual 10.000; pct 3.65; in 20; fisik 0",
+  "product": {
+    "productId": "g3-kak-peja",
+    "ownerType": "consignor",
+    "consignorId": "consignor-kak-peja",
+    "sellPrice": "10000",
+    "marginScheme": {
+      "type": "percent",
+      "marginPercentage": "3.65"
+    },
+    "openingQty": 0,
+    "inQty": 20,
+    "physicalQty": 0,
+    "losses": []
+  },
+  "expected": {
+    "soldQty": 20,
+    "turnover": "200000",
+    "ownerMarginPerPcs": "365",
+    "consignorSharePerPcs": "9635",
+    "ownerMarginTotal": "7300",
+    "soldShare": "192700",
+    "lossCompensation": "0",
+    "payoutDue": "192700"
+  }
+}

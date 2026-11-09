@@ -1,0 +1,37 @@
+{
+  "id": "G6",
+  "name": "Own, weighted average + loss",
+  "description": "Jual 3.000; opening 4 pcs bernilai 8.000; in 6 pcs total 15.000; fisik 3; loss 1 (lost)",
+  "product": {
+    "productId": "g6-own-weighted",
+    "ownerType": "own",
+    "sellPrice": "3000",
+    "pcsPerPack": 1,
+    "openingQty": 4,
+    "openingValue": "8000",
+    "inQty": 6,
+    "inCost": "15000",
+    "physicalQty": 3,
+    "losses": [
+      {
+        "qty": 1,
+        "reason": "lost",
+        "borneBy": "owner",
+        "note": "Hilang"
+      }
+    ]
+  },
+  "expected": {
+    "avgCost": "2300",
+    "expectedQty": 10,
+    "diffQty": 7,
+    "lossQty": 1,
+    "soldQty": 6,
+    "turnover": "18000",
+    "cogs": "13800",
+    "marginTotal": "4200",
+    "ownLossCost": "2300",
+    "closingValue": "6900",
+    "invariantI2TotalCost": "23000"
+  }
+}

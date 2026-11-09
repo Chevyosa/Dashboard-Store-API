@@ -1,0 +1,36 @@
+{
+  "id": "G9",
+  "name": "Ledger penitip",
+  "description": "Accrual 60.000 (G2); bayar 40.000; bayar 20.000; bayar 5.000",
+  "consignorId": "consignor-pak-sani",
+  "steps": [
+    {
+      "step": 1,
+      "accruals": ["60000"],
+      "payments": [],
+      "expectedBalance": "60000",
+      "expectedStatus": "unpaid"
+    },
+    {
+      "step": 2,
+      "accruals": ["60000"],
+      "payments": ["40000"],
+      "expectedBalance": "20000",
+      "expectedStatus": "unpaid"
+    },
+    {
+      "step": 3,
+      "accruals": ["60000"],
+      "payments": ["40000", "20000"],
+      "expectedBalance": "0",
+      "expectedStatus": "settled"
+    },
+    {
+      "step": 4,
+      "accruals": ["60000"],
+      "payments": ["40000", "20000", "5000"],
+      "expectedBalance": "-5000",
+      "expectedStatus": "overpaid"
+    }
+  ]
+}

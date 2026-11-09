@@ -1,0 +1,39 @@
+{
+  "id": "G4",
+  "name": "Loss titipan ditanggung owner",
+  "description": "G2 tapi fisik 2; loss 1 (damaged_on_display, owner)",
+  "product": {
+    "productId": "g4-pak-sani-loss-owner",
+    "ownerType": "consignor",
+    "consignorId": "consignor-pak-sani",
+    "sellPrice": "7000",
+    "marginScheme": {
+      "type": "nominal",
+      "marginValue": "1000"
+    },
+    "openingQty": 0,
+    "inQty": 10,
+    "physicalQty": 2,
+    "losses": [
+      {
+        "qty": 1,
+        "reason": "damaged_on_display",
+        "borneBy": "owner",
+        "note": "Rusak di etalase"
+      }
+    ]
+  },
+  "expected": {
+    "diffQty": 8,
+    "lossQty": 1,
+    "soldQty": 7,
+    "turnover": "49000",
+    "ownerMarginPerPcs": "1000",
+    "consignorSharePerPcs": "6000",
+    "ownerMarginTotal": "7000",
+    "soldShare": "42000",
+    "lossCompensation": "6000",
+    "payoutDue": "48000",
+    "profitAContribution": "1000"
+  }
+}

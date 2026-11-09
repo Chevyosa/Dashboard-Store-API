@@ -1,0 +1,53 @@
+{
+  "id": "G7",
+  "name": "Gabungan G6 + G2, uang pas",
+  "description": "QRIS 60.000 + cash 28.000; modal belanja 15.000",
+  "reconciliation": {
+    "qrisAmount": "60000",
+    "cashAmount": "28000",
+    "modalBelanjaOwn": "15000"
+  },
+  "products": [
+    {
+      "productId": "g6-product",
+      "ownerType": "own",
+      "sellPrice": "3000",
+      "openingQty": 4,
+      "openingValue": "8000",
+      "inQty": 6,
+      "inCost": "15000",
+      "physicalQty": 3,
+      "losses": [
+        {
+          "qty": 1,
+          "reason": "lost",
+          "borneBy": "owner"
+        }
+      ]
+    },
+    {
+      "productId": "g2-product",
+      "ownerType": "consignor",
+      "consignorId": "consignor-pak-sani",
+      "sellPrice": "7000",
+      "marginScheme": {
+        "type": "nominal",
+        "marginValue": "1000"
+      },
+      "openingQty": 0,
+      "inQty": 10,
+      "physicalQty": 0,
+      "losses": []
+    }
+  ],
+  "expected": {
+    "theoreticalTurnover": "88000",
+    "realCash": "88000",
+    "cashDifference": "0",
+    "payoutTotal": "60000",
+    "profitA": "11900",
+    "profitB": "13000",
+    "profitDiff": "1100",
+    "stockValueChange": "1100"
+  }
+}
