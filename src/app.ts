@@ -14,6 +14,7 @@ import { createProtectedAuthRouter, createPublicAuthRouter } from './routes/auth
 import { createConsignorRouter } from './routes/consignor.js';
 import { createProductRouter } from './routes/product.js';
 import { createStockInRouter } from './routes/stock-in.js';
+import { createStockInPaymentRouter } from './routes/stock-in-payment.js';
 import { createStockReturnRouter } from './routes/stock-return.js';
 import { createLossRouter } from './routes/loss.js';
 import { createOpnameRouter } from './routes/opname.js';
@@ -22,10 +23,12 @@ import { createTakeProfitRouter } from './routes/take-profit.js';
 import { createDashboardRouter } from './routes/dashboard.js';
 import { createAuditRouter } from './routes/audit.js';
 import { createHealthRouter } from './routes/health.js';
+import { createLiquidityRouter } from './routes/liquidity.js';
 import { createAuthController } from './controllers/auth.controller.js';
 import { createConsignorController } from './controllers/consignor.controller.js';
 import { createProductController } from './controllers/product.controller.js';
 import { createStockInController } from './controllers/stock-in.controller.js';
+import { createStockInPaymentController } from './controllers/stock-in-payment.controller.js';
 import { createStockReturnController } from './controllers/stock-return.controller.js';
 import { createLossController } from './controllers/loss.controller.js';
 import { createOpnameController } from './controllers/opname.controller.js';
@@ -33,10 +36,12 @@ import { createPayoutController } from './controllers/payout.controller.js';
 import { createTakeProfitController } from './controllers/take-profit.controller.js';
 import { createDashboardController } from './controllers/dashboard.controller.js';
 import { createAuditController } from './controllers/audit.controller.js';
+import { createLiquidityCutoverController } from './controllers/liquidity-cutover.controller.js';
 import { createAuthService } from './services/auth.service.js';
 import { createConsignorService } from './services/consignor.service.js';
 import { createProductService } from './services/product.service.js';
 import { createStockInService } from './services/stock-in.service.js';
+import { createStockInPaymentService } from './services/stock-in-payment.service.js';
 import { createStockReturnService } from './services/stock-return.service.js';
 import { createLossService } from './services/loss.service.js';
 import { createOpnameService } from './services/opname.service.js';
@@ -44,6 +49,7 @@ import { createPayoutService } from './services/payout.service.js';
 import { createTakeProfitService } from './services/take-profit.service.js';
 import { createDashboardService } from './services/dashboard.service.js';
 import { createAuditService } from './services/audit.service.js';
+import { createLiquidityCutoverService } from './services/liquidity-cutover.js';
 import type { Clock } from './utils/time.js';
 
 export interface AppDeps {
@@ -98,6 +104,12 @@ export function createApp(deps: AppDeps): Express {
   });
   const stockInController = createStockInController(stockInService);
 
+  const stockInPaymentService = createStockInPaymentService({
+    pool,
+    ...(deps.clock === undefined ? {} : { clock: deps.clock }),
+  });
+  const stockInPaymentController = createStockInPaymentController(stockInPaymentService);
+
   const stockReturnService = createStockReturnService({
     pool,
     ...(deps.clock === undefined ? {} : { clock: deps.clock }),
@@ -137,6 +149,12 @@ export function createApp(deps: AppDeps): Express {
   const auditService = createAuditService({ pool });
   const auditController = createAuditController(auditService);
 
+  const liquidityCutoverService = createLiquidityCutoverService({
+    pool,
+    ...(deps.clock === undefined ? {} : { clock: deps.clock }),
+  });
+  const liquidityCutoverController = createLiquidityCutoverController(liquidityCutoverService);
+
   // Everything under /api/v1 needs a session except login/logout (AGENTS.md §8).
   // requireAuth sits before the 404 handler so unknown routes do not leak without a session.
   const api = express.Router();
@@ -147,6 +165,7 @@ export function createApp(deps: AppDeps): Express {
   api.use(createConsignorRouter(consignorController));
   api.use(createProductRouter(productController));
   api.use(createStockInRouter(stockInController));
+  api.use(createStockInPaymentRouter(stockInPaymentController));
   api.use(createStockReturnRouter(stockReturnController));
   api.use(createLossRouter(lossController));
   api.use(createOpnameRouter(opnameController));
@@ -154,6 +173,7 @@ export function createApp(deps: AppDeps): Express {
   api.use(createTakeProfitRouter(takeProfitController));
   api.use(createDashboardRouter(dashboardController));
   api.use(createAuditRouter(auditController));
+  api.use(createLiquidityRouter(liquidityCutoverController));
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);

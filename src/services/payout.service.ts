@@ -8,6 +8,7 @@ import {
 import { addMoney, parseMoney, ZERO_MONEY, toDbString } from '../domain/money.js';
 import { insertAuditEntry } from '../repositories/audit.repository.js';
 import { findConsignorById } from '../repositories/consignor.repository.js';
+import { LiquidityRepository } from '../repositories/liquidity.repository.js';
 import { OpnameRepository } from '../repositories/opname.repository.js';
 import {
   PayoutRepository,
@@ -16,6 +17,7 @@ import {
   type CreatePaymentData,
 } from '../repositories/payout.repository.js';
 import { AppError } from '../utils/errors.js';
+import { assertAfterCutover } from './liquidity-cutover.js';
 import { systemClock, type Clock } from '../utils/time.js';
 import type {
   CreateConsignorPaymentInput,
@@ -75,6 +77,7 @@ export interface ConsignorLedgersOverview {
 export function createPayoutService({ pool, clock = systemClock }: PayoutServiceDeps) {
   const payoutRepo = new PayoutRepository();
   const opnameRepo = new OpnameRepository();
+  const liquidityRepo = new LiquidityRepository();
 
   return {
     async recordPayment(
@@ -85,6 +88,10 @@ export function createPayoutService({ pool, clock = systemClock }: PayoutService
       const now = clock();
 
       return withTransaction(pool, async (conn) => {
+        // Common cutover lock first: serializes with every other liquidity source write.
+        const cutover = await liquidityRepo.lockCutoverForUpdate(conn);
+        assertAfterCutover(cutover, input.paymentDate, 'Pembayaran penitip');
+
         const consignor = await findConsignorById(conn, input.consignorId);
         if (!consignor) {
           throw new AppError(404, 'CONSIGNOR_NOT_FOUND', `Penitip dengan ID ${input.consignorId} tidak ditemukan.`);
@@ -109,6 +116,20 @@ export function createPayoutService({ pool, clock = systemClock }: PayoutService
 
         const created = await payoutRepo.createPayment(createData, conn);
 
+        if (cutover) {
+          await liquidityRepo.appendEvent(
+            {
+              eventType: 'consignor_payment',
+              sourceType: 'consignor_payment',
+              sourceId: String(created.id),
+              amountDelta: toDbString(parseMoney(created.amount).negated()),
+              effectiveDate: created.paymentDate,
+              createdBy: userId,
+            },
+            conn,
+          );
+        }
+
         await insertAuditEntry(conn, {
           userId,
           action: 'consignor_payment.created',
@@ -128,9 +149,19 @@ export function createPayoutService({ pool, clock = systemClock }: PayoutService
       const now = clock();
 
       return withTransaction(pool, async (conn) => {
+        const cutover = await liquidityRepo.lockCutoverForUpdate(conn);
+
         const existing = await payoutRepo.findPaymentById(id, conn);
         if (!existing) {
           throw new AppError(404, 'PAYMENT_NOT_FOUND', `Bukti pembayaran dengan ID ${id} tidak ditemukan.`);
+        }
+        if (cutover) {
+          // The liquidity ledger is append-only once the cutover exists.
+          throw new AppError(
+            409,
+            'LIQUIDITY_HISTORY_LOCKED',
+            'Pembayaran penitip tidak dapat dihapus setelah cutover saldo karena riwayat likuiditas sudah dikunci.',
+          );
         }
 
         await payoutRepo.deletePayment(id, conn);

@@ -3,6 +3,7 @@ import type { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
 import request from 'supertest';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app.js';
+import { LiquidityRepository } from '../../src/repositories/liquidity.repository.js';
 import { createAdmin } from '../../src/services/admin.service.js';
 import { cleanDatabase, createTestPool, getTestEnv } from '../helpers/db.js';
 
@@ -112,6 +113,10 @@ describe('Take Profit API (/api/v1/take-profits)', () => {
         totalWithdrawnAllTime: '0.0000',
         availableToWithdraw: '0.0000',
         isSafe: false,
+        liquidityInitialized: false,
+        currentLiquidBalance: null,
+        unpaidStockPurchaseBalance: '0.0000',
+        totalUnpaidObligations: '0.0000',
       });
       expect(res.body.data.warningReason).toContain('Belum ada opname final');
     });
@@ -163,6 +168,11 @@ describe('Take Profit API (/api/v1/take-profits)', () => {
       expect(res.body.data.rawBalance).toBe('300000.0000');
       expect(res.body.data.isSafe).toBe(true);
       expect(res.body.data.warningReason).toBeNull();
+      expect(res.body.data.liquidityInitialized).toBe(false);
+      expect(res.body.data.currentLiquidBalance).toBeNull();
+      expect(res.body.data.unpaidStockPurchaseBalance).toBe('0.0000');
+      expect(res.body.data.totalUnpaidObligations).toBe('300000.0000');
+      expect(res.body.data.liquidityShortfall).toBe('0.0000');
 
       // Now simulate owner paying the consignor Rp 300.000 (User's real scenario)
       await authedPost('/api/v1/payouts/payments', {
@@ -217,6 +227,17 @@ describe('Take Profit API (/api/v1/take-profits)', () => {
       expect(res.body.data.rawBalance).toBe('-300000.0000');
       expect(res.body.data.isSafe).toBe(false);
       expect(res.body.data.warningReason).toContain('belum aman untuk ditarik');
+      expect(res.body.data.liquidityInitialized).toBe(false);
+      expect(res.body.data.currentLiquidBalance).toBeNull();
+      expect(res.body.data.liquidityShortfall).toBe('300000.0000');
+
+      // Before cutover a withdrawal is recorded without the ledger guard (unchanged behavior).
+      const tp = await authedPost('/api/v1/take-profits', {
+        amount: '100000',
+        withdrawalDate: '2026-03-02',
+        paymentMethod: 'cash',
+      });
+      expect(tp.status).toBe(201);
     });
   });
 
@@ -351,6 +372,210 @@ describe('Take Profit API (/api/v1/take-profits)', () => {
       const res = await authedDelete('/api/v1/take-profits/99999');
       expect(res.status).toBe(404);
       expect(res.body.error.code).toBe('TAKE_PROFIT_NOT_FOUND');
+    });
+  });
+
+  describe('After liquidity cutover (ledger-backed position)', () => {
+    const CUTOVER_AT = '2026-03-01 15:00:00.000';
+    const AFTER_CUTOFF = '2026-03-02';
+
+    async function activateCutover(opts: {
+      opening: string;
+      openingUnpaidStock?: string;
+      opnameHighWaterId?: number;
+    }): Promise<void> {
+      await pool.execute(
+        `INSERT INTO liquidity_cutover
+           (id, opening_amount, opening_unpaid_stock, cutover_at, opname_high_water_id,
+            stock_in_high_water_id, consignor_payment_high_water_id, take_profit_high_water_id)
+         VALUES (1, ?, ?, ?, ?, 0, 0, 0)`,
+        [opts.opening, opts.openingUnpaidStock ?? '0', CUTOVER_AT, opts.opnameHighWaterId ?? 0],
+      );
+      await pool.execute(
+        `INSERT INTO liquidity_events (event_type, source_type, source_id, amount_delta, effective_date)
+         VALUES ('opening', 'cutover', 1, ?, '2026-03-01')`,
+        [opts.opening],
+      );
+    }
+
+    const withdraw = (amount: string) =>
+      authedPost('/api/v1/take-profits', { amount, withdrawalDate: AFTER_CUTOFF, paymentMethod: 'cash' });
+
+    async function countRows(table: string): Promise<number> {
+      const [rows] = await pool.query<RowDataPacket[]>(`SELECT COUNT(*) AS n FROM ${pool.escapeId(table)}`);
+      return Number(rows[0]?.n ?? 0);
+    }
+
+    it('reports zero safe surplus and the shortfall when the ledger is below the reserve', async () => {
+      await activateCutover({ opening: '296000' });
+      const put = await authedPut('/api/v1/take-profits/settings/working-capital', {
+        minWorkingCapital: '300000',
+      });
+      expect(put.status).toBe(200);
+
+      const res = await authedGet('/api/v1/take-profits/overview');
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({
+        latestOpname: null,
+        liquidityInitialized: true,
+        currentLiquidBalance: '296000.0000',
+        minWorkingCapital: '300000.0000',
+        totalUnpaidConsignorBalance: '0.0000',
+        unpaidStockPurchaseBalance: '0.0000',
+        totalUnpaidObligations: '0.0000',
+        totalPayout: '0.0000',
+        payoutPaid: '0.0000',
+        payoutUnpaid: '0.0000',
+        payoutStatus: 'settled',
+        availableToWithdraw: '0.0000',
+        rawBalance: '-4000.0000',
+        liquidityShortfall: '4000.0000',
+        isSafe: false,
+      });
+      expect(res.body.data.warningReason).toContain('belum aman untuk ditarik');
+
+      const tp = await withdraw('1');
+      expect(tp.status).toBe(409);
+      expect(tp.body.error.code).toBe('INSUFFICIENT_LIQUIDITY');
+      expect(await countRows('take_profits')).toBe(0);
+    });
+
+    it('deducts unpaid legacy stock and per-consignor payouts, allows the exact surplus and rejects any excess', async () => {
+      const consignorA = (await authedPost('/api/v1/consignors', { name: 'Ibu Ani', phone: '0811' })).body.data.id;
+      const consignorB = (await authedPost('/api/v1/consignors', { name: 'Pak Budi', phone: '0812' })).body.data.id;
+
+      // Pre-cutover history: B is overpaid by 50.000, A is owed 200.000 by a final opname.
+      const prePay = await authedPost('/api/v1/payouts/payments', {
+        consignorId: consignorB,
+        amount: '50000',
+        paymentDate: '2026-03-01',
+        paymentMethod: 'cash',
+      });
+      expect(prePay.status).toBe(201);
+      const [opnameRes] = await pool.execute<ResultSetHeader>(
+        `INSERT INTO opnames (
+           opname_date, status, total_turnover, total_sold_qty, total_loss_qty,
+           total_cogs, total_payout_due, cash_amount, qris_amount, real_cash
+         ) VALUES ('2026-03-01', 'final', 900000, 90, 0, 0, 200000, 900000, 0, 900000)`,
+      );
+      const opnameId = opnameRes.insertId;
+      await pool.execute(
+        `INSERT INTO opname_consignor_payouts (opname_id, consignor_id, sold_share, loss_compensation, payout_due)
+         VALUES (?, ?, 200000, 0, 200000)`,
+        [opnameId, consignorA],
+      );
+
+      await activateCutover({ opening: '1000000', openingUnpaidStock: '150000', opnameHighWaterId: opnameId });
+
+      // Post-cutover partial payout to A: ledger 1.000.000 - 80.000 = 920.000; A still owed 120.000.
+      const pay = await authedPost('/api/v1/payouts/payments', {
+        consignorId: consignorA,
+        amount: '80000',
+        paymentDate: AFTER_CUTOFF,
+        paymentMethod: 'cash',
+      });
+      expect(pay.status).toBe(201);
+
+      // Required = reserve 400.000 + consignor 120.000 (B's overpayment must not offset A)
+      //          + legacy unpaid stock 150.000 = 670.000; safe = 920.000 - 670.000 = 250.000.
+      const res = await authedGet('/api/v1/take-profits/overview');
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({
+        liquidityInitialized: true,
+        currentLiquidBalance: '920000.0000',
+        minWorkingCapital: '400000.0000',
+        totalUnpaidConsignorBalance: '120000.0000',
+        unpaidStockPurchaseBalance: '150000.0000',
+        totalUnpaidObligations: '270000.0000',
+        totalPayout: '200000.0000',
+        payoutPaid: '80000.0000',
+        payoutUnpaid: '120000.0000',
+        payoutStatus: 'partial',
+        availableToWithdraw: '250000.0000',
+        rawBalance: '250000.0000',
+        liquidityShortfall: '0.0000',
+        isSafe: true,
+        warningReason: null,
+      });
+
+      const excess = await withdraw('250000.0001');
+      expect(excess.status).toBe(409);
+      expect(excess.body.error.code).toBe('INSUFFICIENT_LIQUIDITY');
+      expect(await countRows('take_profits')).toBe(0);
+
+      const exact = await withdraw('250000');
+      expect(exact.status).toBe(201);
+      expect(exact.body.data.opnameId).toBe(opnameId);
+
+      const after = await authedGet('/api/v1/take-profits/overview');
+      expect(after.body.data).toMatchObject({
+        currentLiquidBalance: '670000.0000',
+        availableToWithdraw: '0.0000',
+        rawBalance: '0.0000',
+        liquidityShortfall: '0.0000',
+        withdrawnCurrentPeriod: '250000.0000',
+        totalWithdrawnAllTime: '250000.0000',
+      });
+
+      const more = await withdraw('0.0001');
+      expect(more.status).toBe(409);
+      expect(more.body.error.code).toBe('INSUFFICIENT_LIQUIDITY');
+      expect(await countRows('take_profits')).toBe(1);
+      const [events] = await pool.query<RowDataPacket[]>(
+        "SELECT COUNT(*) AS n FROM liquidity_events WHERE event_type = 'owner_withdrawal'",
+      );
+      expect(Number(events[0]?.n)).toBe(1);
+    });
+
+    it('applies a reserve change to the guard', async () => {
+      await activateCutover({ opening: '500000' });
+      const put = await authedPut('/api/v1/take-profits/settings/working-capital', {
+        minWorkingCapital: '450000',
+      });
+      expect(put.status).toBe(200);
+
+      expect((await withdraw('50000.0001')).status).toBe(409);
+      expect((await withdraw('50000')).status).toBe(201);
+    });
+
+    it('never lets concurrent withdrawals exceed the safe surplus', async () => {
+      // Safe = 500.000 - 400.000 default reserve = 100.000; only two 40.000 withdrawals fit.
+      await activateCutover({ opening: '500000' });
+
+      const results = await Promise.all([withdraw('40000'), withdraw('40000'), withdraw('40000')]);
+      expect(results.map((r) => r.status).sort()).toEqual([201, 201, 409]);
+      expect(results.find((r) => r.status === 409)?.body.error.code).toBe('INSUFFICIENT_LIQUIDITY');
+      expect(await countRows('take_profits')).toBe(2);
+
+      const overview = await authedGet('/api/v1/take-profits/overview');
+      expect(overview.body.data.currentLiquidBalance).toBe('420000.0000');
+      expect(overview.body.data.availableToWithdraw).toBe('20000.0000');
+    });
+
+    it('serializes a working-capital update behind a holder of the cutover lock', async () => {
+      await activateCutover({ opening: '500000' });
+
+      const holder = await pool.getConnection();
+      try {
+        await holder.beginTransaction();
+        await new LiquidityRepository().lockCutoverForUpdate(holder);
+
+        let settled = false;
+        const pending = Promise.resolve(
+          authedPut('/api/v1/take-profits/settings/working-capital', { minWorkingCapital: '450000' }),
+        ).then((res) => {
+          settled = true;
+          return res;
+        });
+        await new Promise((resolve) => setTimeout(resolve, 750));
+        expect(settled).toBe(false);
+
+        await holder.commit();
+        expect((await pending).status).toBe(200);
+      } finally {
+        await holder.rollback().catch(() => undefined);
+        holder.release();
+      }
     });
   });
 });

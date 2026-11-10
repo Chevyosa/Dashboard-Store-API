@@ -3,6 +3,7 @@ import { withTransaction } from '../config/db.js';
 import {
   toDbString,
   addMoney,
+  isPositiveMoney,
   ZERO_MONEY,
 } from '../domain/money.js';
 import {
@@ -27,7 +28,9 @@ import {
 } from '../repositories/opname.repository.js';
 import { ProductRepository, type ProductEntity } from '../repositories/product.repository.js';
 import { insertAuditEntry } from '../repositories/audit.repository.js';
+import { LiquidityRepository } from '../repositories/liquidity.repository.js';
 import { AppError } from '../utils/errors.js';
+import { assertAfterCutover, assertNotPreCutoverSource } from './liquidity-cutover.js';
 import { systemClock, type Clock } from '../utils/time.js';
 import type {
   PhysicalItemInput,
@@ -84,6 +87,7 @@ export interface PreparedSheetProduct {
 export function createOpnameService({ pool, clock = systemClock }: OpnameServiceDeps) {
   const opnameRepo = new OpnameRepository();
   const productRepo = new ProductRepository(pool);
+  const liquidityRepo = new LiquidityRepository();
 
   async function computeOpnameData(
     opnameDate: string,
@@ -417,25 +421,35 @@ export function createOpnameService({ pool, clock = systemClock }: OpnameService
     ): Promise<OpnameEntity> {
       const now = clock();
 
-      const existing = await opnameRepo.findByDate(input.opnameDate, pool);
-      if (existing && existing.status === 'final') {
-        throw new AppError(
-          409,
-          'PERIOD_ALREADY_FINALIZED',
-          'Opname pada tanggal ini sudah difinalisasi dan tidak dapat disimpan sebagai draft.',
-        );
-      }
-
-      const { calculatedItems, calculatedPayouts, totals } = await computeOpnameData(
-        input.opnameDate,
-        input.items,
-        input.cashAmount ?? '0',
-        input.qrisAmount ?? '0',
-        existing ? existing.id : null,
-        pool,
-      );
-
       return withTransaction(pool, async (conn) => {
+        // Common cutover lock first: a draft saved while the cutover is being
+        // initialized must be seen by its open-draft check.
+        const cutover = await liquidityRepo.lockCutoverForUpdate(conn);
+        assertAfterCutover(cutover, input.opnameDate, 'Draft opname');
+
+        // Read after the lock so the lookup sees any concurrent commit.
+        const existing = await opnameRepo.findByDate(input.opnameDate, conn);
+        if (existing && existing.status === 'final') {
+          throw new AppError(
+            409,
+            'PERIOD_ALREADY_FINALIZED',
+            'Opname pada tanggal ini sudah difinalisasi dan tidak dapat disimpan sebagai draft.',
+          );
+        }
+        // A draft that predates the cutover stays frozen.
+        if (existing) {
+          assertNotPreCutoverSource(cutover, (c) => c.opnameHighWaterId, existing.id, 'Opname');
+        }
+
+        const { calculatedItems, calculatedPayouts, totals } = await computeOpnameData(
+          input.opnameDate,
+          input.items,
+          input.cashAmount ?? '0',
+          input.qrisAmount ?? '0',
+          existing ? existing.id : null,
+          conn,
+        );
+
         const opnameId = await opnameRepo.saveOpnameHeader(
           {
             opnameDate: input.opnameDate,
@@ -491,25 +505,39 @@ export function createOpnameService({ pool, clock = systemClock }: OpnameService
     ): Promise<OpnameEntity> {
       const now = clock();
 
-      const existing = await opnameRepo.findByDate(input.opnameDate, pool);
-      if (existing && existing.status === 'final') {
-        throw new AppError(
-          409,
-          'PERIOD_ALREADY_FINALIZED',
-          'Opname pada tanggal ini sudah difinalisasi.',
-        );
-      }
-
-      const { calculatedItems, calculatedPayouts, totals } = await computeOpnameData(
-        input.opnameDate,
-        input.items,
-        input.cashAmount ?? '0',
-        input.qrisAmount ?? '0',
-        existing ? existing.id : null,
-        pool,
-      );
-
       return withTransaction(pool, async (conn) => {
+        // Common cutover lock first (same order as every other source write),
+        // so this finalization can never land on the wrong side of the cutover.
+        const cutover = await liquidityRepo.lockCutoverForUpdate(conn);
+        assertAfterCutover(cutover, input.opnameDate, 'Finalisasi opname');
+
+        // Checked after the lock: a concurrent finalization of the same date
+        // may have committed while we waited. The lock was a locking read, so
+        // this is the first consistent read and its snapshot includes that commit.
+        const existing = await opnameRepo.findByDate(input.opnameDate, conn);
+        if (existing && existing.status === 'final') {
+          throw new AppError(
+            409,
+            'PERIOD_ALREADY_FINALIZED',
+            'Opname pada tanggal ini sudah difinalisasi.',
+          );
+        }
+        // A draft that predates the cutover stays frozen even if its date is
+        // later: its id is at or below the high-water mark, which marks it as
+        // historical, so its inflow would never be in the ledger.
+        if (existing) {
+          assertNotPreCutoverSource(cutover, (c) => c.opnameHighWaterId, existing.id, 'Opname');
+        }
+
+        const { calculatedItems, calculatedPayouts, totals } = await computeOpnameData(
+          input.opnameDate,
+          input.items,
+          input.cashAmount ?? '0',
+          input.qrisAmount ?? '0',
+          existing ? existing.id : null,
+          conn,
+        );
+
         const opnameId = await opnameRepo.saveOpnameHeader(
           {
             opnameDate: input.opnameDate,
@@ -552,6 +580,22 @@ export function createOpnameService({ pool, clock = systemClock }: OpnameService
           userAgent: meta?.userAgent ?? null,
           at: now,
         });
+
+        // Gross realCash (cash + QRIS) enters the liquid pool. Pre-cutover
+        // opnames are never backfilled; the opening balance already covers them.
+        if (cutover && isPositiveMoney(totals.realCash)) {
+          await liquidityRepo.appendEvent(
+            {
+              eventType: 'opname_inflow',
+              sourceType: 'opname',
+              sourceId: String(opnameId),
+              amountDelta: totals.realCash,
+              effectiveDate: input.opnameDate,
+              createdBy: userId,
+            },
+            conn,
+          );
+        }
 
         const finalized = await opnameRepo.findById(opnameId, conn);
         if (!finalized) {

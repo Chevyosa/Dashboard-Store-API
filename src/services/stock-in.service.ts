@@ -1,4 +1,4 @@
-import type { Pool } from 'mysql2/promise';
+import type { Pool, PoolConnection } from 'mysql2/promise';
 import { withTransaction } from '../config/db.js';
 import { insertAuditEntry } from '../repositories/audit.repository.js';
 import {
@@ -11,8 +11,14 @@ import {
   type StockInSummary,
 } from '../repositories/stock-in.repository.js';
 import { ProductRepository } from '../repositories/product.repository.js';
+import { StockInPaymentRepository } from '../repositories/stock-in-payment.repository.js';
+import {
+  LiquidityRepository,
+  type LiquidityCutoverEntity,
+} from '../repositories/liquidity.repository.js';
 import { parseMoney, toDbString } from '../domain/money.js';
 import { AppError } from '../utils/errors.js';
+import { assertAfterCutover, assertNotPreCutoverSource } from './liquidity-cutover.js';
 import { systemClock, type Clock } from '../utils/time.js';
 import type {
   CreateStockInInput,
@@ -33,6 +39,45 @@ export interface AuditMeta {
 export function createStockInService({ pool, clock = systemClock }: StockInServiceDeps) {
   const stockInRepo = new StockInRepository();
   const productRepo = new ProductRepository(pool);
+  const paymentRepo = new StockInPaymentRepository();
+  const liquidityRepo = new LiquidityRepository();
+
+  // Purchase receipts recorded before the cutover (id at or below the
+  // high-water mark, whatever their date) or dated on/before the cutoff are
+  // covered by the cutover's opening supplier debt, so after cutover they are
+  // frozen: no edit, no delete. Other receipt types are unaffected.
+  function assertPurchaseNotPreCutover(
+    cutover: LiquidityCutoverEntity | null,
+    existing: StockInEntity,
+  ): void {
+    if (existing.type === 'purchase') {
+      const subject = 'Barang masuk belanja (purchase)';
+      assertNotPreCutoverSource(cutover, (c) => c.stockInHighWaterId, existing.id, subject);
+      assertAfterCutover(cutover, existing.date, subject);
+    }
+  }
+
+  // Takes the same row lock that payment recording takes, so an edit/delete and
+  // a payment on one receipt serialize. The lock is the first read, so the
+  // snapshot used afterwards already includes any payment committed before it.
+  async function lockAndLoad(conn: PoolConnection, id: number): Promise<StockInEntity> {
+    const locked = await paymentRepo.lockStockIn(id, conn);
+    const existing = locked ? await stockInRepo.findById(id, conn) : null;
+    if (!existing) {
+      throw new AppError(404, 'STOCK_IN_NOT_FOUND', `Data barang masuk dengan ID ${id} tidak ditemukan.`);
+    }
+    return existing;
+  }
+
+  async function assertNoPayments(conn: PoolConnection, id: number, verb: string): Promise<void> {
+    if (await paymentRepo.hasPayments(id, conn)) {
+      throw new AppError(
+        409,
+        'STOCK_IN_HAS_PAYMENTS',
+        `Data barang masuk tidak dapat ${verb} karena sudah memiliki catatan pembayaran.`,
+      );
+    }
+  }
 
   return {
     async createStockIn(
@@ -43,6 +88,12 @@ export function createStockInService({ pool, clock = systemClock }: StockInServi
       const now = clock();
 
       return withTransaction(pool, async (conn) => {
+        // Common cutover lock first, before any other read or write.
+        const cutover = await liquidityRepo.lockCutoverForUpdate(conn);
+        if (input.type === 'purchase') {
+          assertAfterCutover(cutover, input.date, 'Barang masuk belanja (purchase)');
+        }
+
         const processedLines: CreateStockInLineData[] = [];
 
         for (const line of input.lines) {
@@ -168,10 +219,9 @@ export function createStockInService({ pool, clock = systemClock }: StockInServi
       const now = clock();
 
       return withTransaction(pool, async (conn) => {
-        const existing = await stockInRepo.findById(id, conn);
-        if (!existing) {
-          throw new AppError(404, 'STOCK_IN_NOT_FOUND', `Data barang masuk dengan ID ${id} tidak ditemukan.`);
-        }
+        // Common cutover lock first, then the receipt row lock (same order as payments).
+        const cutover = await liquidityRepo.lockCutoverForUpdate(conn);
+        const existing = await lockAndLoad(conn, id);
 
         // Rule §5.9: Locked if opname finalized
         if (existing.opnameId !== null) {
@@ -181,6 +231,11 @@ export function createStockInService({ pool, clock = systemClock }: StockInServi
             'Data barang masuk tidak dapat diubah karena periode opname sudah difinalisasi.',
           );
         }
+        assertPurchaseNotPreCutover(cutover, existing);
+        if (existing.type === 'purchase' && input.date !== undefined) {
+          assertAfterCutover(cutover, input.date, 'Barang masuk belanja (purchase)');
+        }
+        await assertNoPayments(conn, id, 'diubah');
 
         let processedLines: CreateStockInLineData[] | undefined = undefined;
 
@@ -262,10 +317,9 @@ export function createStockInService({ pool, clock = systemClock }: StockInServi
       const now = clock();
 
       return withTransaction(pool, async (conn) => {
-        const existing = await stockInRepo.findById(id, conn);
-        if (!existing) {
-          throw new AppError(404, 'STOCK_IN_NOT_FOUND', `Data barang masuk dengan ID ${id} tidak ditemukan.`);
-        }
+        // Common cutover lock first, then the receipt row lock (same order as payments).
+        const cutover = await liquidityRepo.lockCutoverForUpdate(conn);
+        const existing = await lockAndLoad(conn, id);
 
         // Rule §5.9: Locked if opname finalized
         if (existing.opnameId !== null) {
@@ -275,6 +329,8 @@ export function createStockInService({ pool, clock = systemClock }: StockInServi
             'Data barang masuk tidak dapat dihapus karena periode opname sudah difinalisasi.',
           );
         }
+        assertPurchaseNotPreCutover(cutover, existing);
+        await assertNoPayments(conn, id, 'dihapus');
 
         await stockInRepo.delete(id, conn);
 
